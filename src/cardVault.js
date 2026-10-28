@@ -49,6 +49,12 @@ function createVault({filePath=DEFAULT_FILE,pepper=process.env.KASHBIT_PIN_PEPPE
    pinEnabled:typeof pepper==='string'&&pepper.length>=32
   };
  }
+ function ownedCard(accountId,cardId){
+  if(typeof cardId!=='string')return null;
+  const record=owner(accountId);
+  const card=record.cards.find(c=>c.id===cardId&&c.customerId===record.customerId);
+  return card?{...card}:null;
+ }
  function setPin(accountId,pin,password,verifyPassword,{reset=false}={}){
   if(typeof pepper!=='string'||pepper.length<32)throw Error('NIP no configurado en este entorno');
   if(!fourDigits(pin))throw Error('NIP: deben ser cuatro dígitos');
@@ -113,6 +119,6 @@ function createVault({filePath=DEFAULT_FILE,pepper=process.env.KASHBIT_PIN_PEPPE
    return {id:card.id,brand,last4};
   }finally{busy.delete(accountId);}
  }
- return {profile,setPin,verifyPin,enroll,provider};
+ return {profile,ownedCard,setPin,verifyPin,enroll,provider};
 }
 module.exports={createVault};

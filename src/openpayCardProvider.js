@@ -50,6 +50,23 @@ function createSandboxProvider({merchantId=process.env.OPENPAY_MERCHANT_ID,
   getCard:async(customerId,cardId)=>{
    if(!validId(customerId)||!validId(cardId))throw Error('Invalid card reference');
    return call('GET','/customers/'+customerId+'/cards/'+cardId);
+  },
+  chargeSavedCard:async({customerId,cardId,amountCents,requestId,deviceSessionId})=>{
+   if(process.env.WABA_SAVED_CARD_PAY_SANDBOX!=='1')throw Error('Sandbox saved-card charges disabled');
+   if(!validId(customerId)||!validId(cardId)||
+      typeof requestId!=='string'||!/^KPR-[A-F0-9]{32}$/.test(requestId)||
+      !Number.isSafeInteger(amountCents)||amountCents<=0||
+      typeof deviceSessionId!=='string'||!/^[A-Za-z0-9_-]{8,255}$/.test(deviceSessionId))
+     throw Error('Invalid saved-card charge');
+   return call('POST','/customers/'+customerId+'/charges',{
+    method:'card',source_id:cardId,amount:amountCents/100,currency:'MXN',
+    order_id:requestId,description:'KashBitPay WABA saved card Sandbox',
+    device_session_id:deviceSessionId
+   });
+  },
+  getCharge:async(customerId,chargeId)=>{
+   if(!validId(customerId)||!validId(chargeId))throw Error('Invalid charge reference');
+   return call('GET','/customers/'+customerId+'/charges/'+chargeId);
   }
  });
 }
