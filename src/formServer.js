@@ -2,6 +2,7 @@ const express = require('express');
 const https = require('https');
 const store = require('./store');
 const { sendMessage } = require('./waba');
+const { renderPage } = require('./microapps');
 
 const MERCHANT = process.env.OPENPAY_MERCHANT_ID || '';
 const PRIVATE_KEY = process.env.OPENPAY_PRIVATE_KEY || '';
@@ -10,6 +11,13 @@ const PUBLIC_KEY = process.env.OPENPAY_PUBLIC_KEY || '';
 function startFormServer(port = 8765) {
   const app = express();
   app.use(express.json());
+
+  app.get('/pay/app', (_req, res) => res.type('html').send(renderPage()));
+  app.get('/pay/app/:feature', (req, res) => {
+    const html = renderPage(req.params.feature);
+    if (!html) return res.status(404).send('No encontrado.');
+    return res.type('html').send(html);
+  });
 
   app.get('/pay/request/:token', (req, res) => {
     const inv = store.consumeInvite(req.params.token);
