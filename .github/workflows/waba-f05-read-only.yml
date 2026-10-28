@@ -1,0 +1,27 @@
+name: WABA F05 Existing Sandbox Receipt Read-Only Certification
+on:
+  push:
+    branches:
+      - audit/waba-f05-statement-provider-reconciliation-20261028
+  pull_request:
+    paths:
+      - 'scripts/f05-verify-existing-payment.js'
+      - 'tests/f05-existing-payment.test.js'
+      - '.github/workflows/waba-f05-read-only.yml'
+permissions:
+  contents: read
+jobs:
+  f05-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: F05 read-only reconciliation + full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+        run: node --test tests/*.test.js
