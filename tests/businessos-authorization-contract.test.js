@@ -149,7 +149,7 @@ test('BusinessOS R1 channel flow denies absent confirmation, unrelated account, 
   resolveTrustedAuthority:async()=>authority,adapter:gateway
  });
  const args={accountId:'other-user',requestId:REQUEST,consent:true,csrfVerified:true};
- assert.equal((await flow.authorize(args)).state,'INVALID_TRUSTED_MAPPING');
+ assert.equal((await flow.authorize(args)).state,'NOT_FOUND');
  assert.equal((await flow.authorize({...args,accountId:authority.accountId,consent:false})).state,'INVALID_CONFIRMATION');
  r.state='PAID';
  assert.equal((await flow.authorize({...args,accountId:authority.accountId})).state,'NOT_PENDING');
