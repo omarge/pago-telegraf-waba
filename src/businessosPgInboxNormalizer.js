@@ -8,7 +8,10 @@ function createPgInboxNormalizer({pool,encryptionKey}={}){
  if(!pool||typeof pool.connect!=='function'||
     !Buffer.isBuffer(encryptionKey)||encryptionKey.length!==32)
   throw Error('R6_CONFIG_INVALID');
- async function processNext(){
+ async function processNext({envelopeDigest=null}={}){
+  if(envelopeDigest!==null&&
+     (typeof envelopeDigest!=='string'||!/^[a-f0-9]{64}$/.test(envelopeDigest)))
+   return {state:'INVALID'};
   const c=await pool.connect();
   let active=false;
   try{
@@ -16,7 +19,9 @@ function createPgInboxNormalizer({pool,encryptionKey}={}){
    const found=await c.query(
     'SELECT envelope_digest,nonce,tag,ciphertext FROM waba_channel.signed_envelopes '+
     'WHERE normalized_at IS NULL AND quarantined_at IS NULL '+
-    'ORDER BY received_at,envelope_digest FOR UPDATE SKIP LOCKED LIMIT 1');
+    'AND ($1::text IS NULL OR envelope_digest=$1) '+
+    'ORDER BY received_at,envelope_digest FOR UPDATE SKIP LOCKED LIMIT 1',
+    [envelopeDigest]);
    if(found.rowCount===0){
     await c.query('COMMIT');active=false;return {state:'EMPTY'};
    }
