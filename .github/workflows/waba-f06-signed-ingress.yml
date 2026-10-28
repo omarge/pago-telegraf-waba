@@ -1,0 +1,30 @@
+name: WABA F06 R5 Signed Ingress Persistence (offline)
+on:
+  push:
+    branches:
+      - audit/waba-f06-signed-ingress-durable-offline-20261028
+  pull_request:
+    paths:
+      - 'src/f06DeliveryEvidence.js'
+      - 'src/f06EvidenceLedger.js'
+      - 'src/f06IsolatedStatusApp.js'
+      - 'tests/f06-r5-signed-ingress.test.js'
+      - '.github/workflows/waba-f06-signed-ingress.yml'
+permissions:
+  contents: read
+jobs:
+  signed-ingress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: R5 isolated signed HTTP + recovery + regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: node --test tests/*.test.js

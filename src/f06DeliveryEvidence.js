@@ -112,6 +112,37 @@ function createDeliveryEvidence({appSecret,phoneId,testToOverride='',maxRecords=
    isLiveIntegrated:false
   };
  }
- return Object.freeze({recordAcceptance,ingestSignedStatus,summary});
+ function exportSnapshot(){
+  return {version:1,records:[...records.entries()].map(([id,r])=>({
+   id,role:r.role,recipient:r.recipient,state:r.state,
+   errorCode:r.errorCode,latestTimestamp:r.latestTimestamp
+  }))};
+ }
+ function restoreSnapshot(snapshot){
+  if(testToOverride)throw Error('F06_TEST_TO_OVERRIDE_ACTIVE');
+  if(!snapshot||snapshot.version!==1||!Array.isArray(snapshot.records)||
+   snapshot.records.length>maxRecords)throw Error('F06_SNAPSHOT_INVALID');
+  const next=new Map();
+  for(const r of snapshot.records){
+   if(!r||!ID_RE.test(r.id||'')||!ROLES.has(r.role)||
+      normalizeRecipient(r.recipient)!==r.recipient||
+      !['ACCEPTED_BY_META',...STATES].includes(r.state)||
+      !Number.isSafeInteger(r.latestTimestamp)||r.latestTimestamp<0||
+      (r.errorCode!==null&&(!Number.isSafeInteger(r.errorCode)||r.errorCode<0))||
+      next.has(r.id))throw Error('F06_SNAPSHOT_INVALID');
+   if((r.state==='ACCEPTED_BY_META'&&r.latestTimestamp!==0)||
+      (r.state!=='ACCEPTED_BY_META'&&r.latestTimestamp===0)||
+      (r.state!=='failed'&&r.errorCode!==null))
+    throw Error('F06_SNAPSHOT_INVALID');
+   next.set(r.id,{
+    role:r.role,recipient:r.recipient,state:r.state,
+    errorCode:r.errorCode,latestTimestamp:r.latestTimestamp
+   });
+  }
+  records.clear();
+  for(const [id,r] of next)records.set(id,r);
+ }
+ return Object.freeze({recordAcceptance,ingestSignedStatus,summary,
+  exportSnapshot,restoreSnapshot});
 }
 module.exports={createDeliveryEvidence,normalizeRecipient,verifySignature};
