@@ -170,7 +170,7 @@ test('F07 whole two-party happy path via HTTP: menu, request once, login, saved 
   r=await call(form,'/pay/app/pay/'+REQUEST,postPay(payerCookie,csrf,card));
   assert.equal(r.status,200);
   assert.match(await r.text(),/Pago completado/);
-  assert.deepEqual(f.calls,['GET_CARD','GET_CARD','POST_CHARGE','GET_CHARGE']);
+  assert.deepEqual(f.calls,['GET_CARD','POST_CHARGE','GET_CHARGE']);
   assert.equal(f.store.getRequest(REQUEST).state,'PAID');
   assert.equal(f.outgoing.filter(x=>x.body?.includes('✅ Pago completado')).length,2);
   assert.deepEqual(
