@@ -23,23 +23,36 @@ function api(method, path, body) {
         Authorization: `Bearer ${TOKEN}`,
         'Content-Type': 'application/json',
       },
+      timeout: 15000,
     };
     if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
+    console.log('[waba] request', method, path, 'to=', body?.to);
     const req = https.request(opts, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
+        console.log('[waba] response', res.statusCode, d.slice(0, 300));
         try { resolve(JSON.parse(d)); } catch { resolve(d); }
       });
     });
-    req.on('error', reject);
+    req.on('error', (e) => {
+      console.error('[waba] request error:', e.message);
+      reject(e);
+    });
+    req.on('timeout', () => {
+      console.error('[waba] request timeout');
+      req.destroy();
+      reject(new Error('timeout'));
+    });
     if (data) req.write(data);
     req.end();
   });
 }
 
 async function sendMessage(to, text) {
+  const original = to;
   to = normalizePhone(to);
+  console.log('[waba] sendMessage original=', original, 'normalized=', to);
   return api('POST', `${PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
     to,
