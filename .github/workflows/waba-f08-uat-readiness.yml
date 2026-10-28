@@ -1,0 +1,33 @@
+name: WABA F08 UAT Readiness Offline
+on:
+  push:
+    branches:
+      - audit/waba-f08-uat-readiness-offline-20261028
+  pull_request:
+    paths:
+      - 'src/formServer.js'
+      - 'tests/f08-uat-readiness.test.js'
+      - 'scripts/f08-uat-readiness.js'
+      - 'tests/f08-preflight.test.js'
+      - '.github/workflows/waba-f08-uat-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  f08-uat-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Syntax and full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: |
+          node --check src/formServer.js
+          node --check scripts/f08-uat-readiness.js
+          node --test tests/*.test.js
