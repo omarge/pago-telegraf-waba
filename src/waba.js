@@ -25,24 +25,25 @@ function api(method, path, body) {
         Authorization: `Bearer ${TOKEN}`,
         'Content-Type': 'application/json',
       },
-      timeout: 15000,
+      timeout: 60000,
     };
     if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
     console.log('[waba] request', method, path, 'to=', body?.to);
+    const start = Date.now();
     const req = https.request(opts, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
-        console.log('[waba] response', res.statusCode, d.slice(0, 300));
+        console.log('[waba] response', res.statusCode, 'in', Date.now() - start, 'ms', d.slice(0, 300));
         try { resolve(JSON.parse(d)); } catch { resolve(d); }
       });
     });
     req.on('error', (e) => {
-      console.error('[waba] request error:', e.message);
+      console.error('[waba] request error:', e.message, 'after', Date.now() - start, 'ms');
       reject(e);
     });
     req.on('timeout', () => {
-      console.error('[waba] request timeout');
+      console.error('[waba] request timeout after', Date.now() - start, 'ms');
       req.destroy();
       reject(new Error('timeout'));
     });
