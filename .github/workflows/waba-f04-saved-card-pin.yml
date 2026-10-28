@@ -1,0 +1,27 @@
+name: WABA F04 Saved Card + PIN Offline Happy Path
+on:
+  push:
+    branches:
+      - audit/waba-f04-happy-path-saved-card-pin-20261028
+  pull_request:
+    paths:
+      - 'src/savedPayClient.js'
+      - 'tests/f04-*.test.js'
+      - '.github/workflows/waba-f04-saved-card-pin.yml'
+permissions:
+  contents: read
+jobs:
+  f04-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: F04 browser, provider contract and full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+        run: node --test tests/*.test.js
