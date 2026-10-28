@@ -123,9 +123,12 @@ function paymentPage(requestId, amountCents, amountText, requesterId,
       '<p>Pago con tarjeta guardada no habilitado en este entorno.</p>';
     return '<!doctype html><html lang="es"><head><meta charset="utf-8">'+
       '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-      '<meta name="referrer" content="no-referrer"><title>KashBitPay · Sandbox</title>'+
+      '<meta name="referrer" content="no-referrer"><title>KashBitPay Sandbox</title>'+
       '</head><body><main><h1>Solicitud de pago</h1>'+
-      '<p>Importe: 
+      '<p>Importe: '+String.fromCharCode(36)+amountText+' MXN</p>'+
+      '<p>Solicitud: '+requestId+'</p>'+link+'</main></body></html>';
+  }
+  const pk = PUBLIC_KEY || 'pk_test_placeholder';
   const mid = MERCHANT || 'merchant_placeholder';
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
