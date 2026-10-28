@@ -167,3 +167,16 @@ test('web flow: login continuation, authenticated form, PIN and payment receipt'
   assert.equal(f.request.state,'PAID');
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('F04 receipt never claims WhatsApp was requested or delivered; links to the persisted receipt',()=>{
+ const {receipt}=require('../src/savedCardRoutes');
+ const id='KPR-'+'A'.repeat(32);
+ const html=receipt({
+  state:'PAID',chargeId:'charge12345678',amountCents:1000
+ },{requestId:id});
+ assert.match(html,/Pago completado/);
+ assert.match(html,/Ver comprobante/);
+ assert.match(html,new RegExp('/pay/app/receipt/'+id));
+ assert.match(html,/La entrega por WhatsApp no está confirmada/);
+ assert.doesNotMatch(html,/Se solicitó la notificación|Se envió la notificación|WhatsApp entregado/);
+});

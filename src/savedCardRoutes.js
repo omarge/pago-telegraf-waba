@@ -46,7 +46,9 @@ function receipt(result,view){
   '<p>Solicitud: '+esc(view.requestId)+'</p>'+
   '<p>Importe: $'+(result.amountCents/100).toFixed(2)+' MXN</p>'+
   '<p>Rastreo: '+esc(result.chargeId)+'</p>'+
-  '<p>Se solicitó la notificación por WhatsApp.</p><a href="/pay/app">Volver al menú</a>');
+  '<p>Comprobante disponible en tu estado de cuenta. La entrega por WhatsApp no está confirmada.</p>'+
+  '<a href="/pay/app/receipt/'+esc(view.requestId)+'">Ver comprobante</a>'+
+  '<a href="/pay/app">Volver al menú</a>');
  if(result.state==='UNKNOWN_SAVED_CARD'||result.state==='SUBMITTING_SAVED_CARD')return page(
   '<h1>Resultado pendiente</h1><p>El cargo puede haberse procesado. No lo repitas; verifica en Openpay Sandbox.</p>'+
   '<p>Solicitud: '+esc(view.requestId)+'</p>');
