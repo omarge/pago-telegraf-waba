@@ -52,7 +52,18 @@
        consent:document.getElementById('consent').checked
       })
      });
-     if(!resp.ok)throw Error('Registro no confirmado: consulta tus tarjetas antes de repetir.');
+     if(!resp.ok){
+      const result=await resp.json().catch(()=>null);
+      const stages={CREATE_CUSTOMER:'CREATE_CUSTOMER',STORE_CUSTOMER:'STORE_CUSTOMER',
+       CREATE_CARD:'CREATE_CARD',GET_CARD:'GET_CARD',VERIFY_CARD:'VERIFY_CARD',
+       STORE_CARD:'STORE_CARD',VALIDATION:'VALIDATION'};
+      const stage=stages[result?.stage]||'UNKNOWN';
+      const code=/^[0-9]{3,6}$/.test(String(result?.openpayCode??''))?result.openpayCode:null;
+      const http=Number.isInteger(result?.openpayHttpStatus)&&result.openpayHttpStatus>=400&&result.openpayHttpStatus<=599?result.openpayHttpStatus:null;
+      throw Error('Registro no confirmado (etapa '+stage+')'+
+       (http?' Openpay HTTP '+http:'')+(code?' código '+code:'')+
+       '. Consulta Mis tarjetas antes de repetir.');
+     }
      const card=await resp.json();
      say('Tarjeta registrada: '+card.brand+' •••• '+card.last4);
     }catch(e){say(e.message);}

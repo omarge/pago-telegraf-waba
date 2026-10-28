@@ -25,7 +25,16 @@ function createSandboxProvider({merchantId=process.env.OPENPAY_MERCHANT_ID,
      body+=part;
     });
     res.on('end',()=>{
-     if(res.statusCode<200||res.statusCode>=300)return reject(new Error('Openpay Sandbox HTTP '+res.statusCode));
+     if(res.statusCode<200||res.statusCode>=300){
+      const error=new Error('Openpay Sandbox rejected request');
+      if(Number.isInteger(res.statusCode)&&res.statusCode>=400&&res.statusCode<=599)
+       error.openpayHttpStatus=res.statusCode;
+      try{
+       const parsed=JSON.parse(body),code=String(parsed?.error_code??'');
+       if(/^[0-9]{3,6}$/.test(code))error.openpayCode=code;
+      }catch(_ignored){} // No provider description or sensitive payload may escape.
+      return reject(error);
+     }
      try{const parsed=JSON.parse(body);resolve(parsed);}
      catch(_e){reject(new Error('Invalid Openpay Sandbox response'));}
     });

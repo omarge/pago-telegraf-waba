@@ -94,17 +94,22 @@ function createVault({filePath=DEFAULT_FILE,pepper=process.env.KASHBIT_PIN_PEPPE
   if(typeof email!=='string'||email.length>254||!email.includes('@'))throw Error('Correo inválido');
   if(owner(accountId).cards.length>=10)throw Error('Límite de tarjetas alcanzado');
   busy.add(accountId);
+  let stage='CREATE_CUSTOMER';
   try{
    let customerId=owner(accountId).customerId;
    if(!customerId){
     const customer=await provider.createCustomer({firstName:firstName.trim(),lastName:lastName.trim(),email});
     if(!goodId(customer?.id))throw Error('Referencia de cliente inválida');
     customerId=customer.id;
+    stage='STORE_CUSTOMER';
     mutate(accountId,r=>{r.customerId=customerId;});
    }
+   stage='CREATE_CARD';
    const card=await provider.addCard(customerId,tokenId,deviceSessionId);
    if(!goodId(card?.id))throw Error('Referencia de tarjeta inválida');
+   stage='GET_CARD';
    const checked=await provider.getCard(customerId,card.id);
+   stage='VERIFY_CARD';
    if(checked?.id!==card.id||checked.customer_id!==customerId||
     checked.allows_charges===false)throw Error('Tarjeta no confirmada por proveedor');
    const masked=String(checked.card_number||'');
@@ -112,11 +117,15 @@ function createVault({filePath=DEFAULT_FILE,pepper=process.env.KASHBIT_PIN_PEPPE
    if(!/^[0-9]{4}$/.test(last4))throw Error('Últimos cuatro dígitos no verificados');
    const brand=String(checked.brand||'').slice(0,30);
    if(!/^[A-Za-z0-9 -]{1,30}$/.test(brand))throw Error('Marca de tarjeta inválida');
+   stage='STORE_CARD';
    mutate(accountId,r=>{
     if(r.cards.some(c=>c.id===card.id))throw Error('Tarjeta ya registrada');
     r.cards.push({id:card.id,brand,last4,customerId,merchantId:provider.merchantId,createdAt:now()});
    });
    return {id:card.id,brand,last4};
+  }catch(error){
+   if(error&&typeof error==='object')error.enrollmentStage=stage;
+   throw error;
   }finally{busy.delete(accountId);}
  }
  return {profile,ownedCard,setPin,verifyPin,enroll,provider};
