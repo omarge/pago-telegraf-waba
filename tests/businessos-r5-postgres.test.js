@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {Pool}=require('pg');
+const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createPostgresChannelStore}=require('../src/businessosPgChannelStore');
 const {createPgPayerClaims}=require('../src/businessosPgPayerClaims');
 const {createPgSignedInbox}=require('../src/businessosPgSignedInbox');
@@ -18,8 +19,7 @@ let pool,store,claims,inbox;
 if(process.env.R4_POSTGRES_TEST_URL){
  before(async()=>{
   pool=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:12});
-  await pool.query(fs.readFileSync(path.resolve(__dirname,'../db/waba-r4-channel.sql'),'utf8'));
-  await pool.query(fs.readFileSync(path.resolve(__dirname,'../db/waba-r5-channel.sql'),'utf8'));
+  await applyTestChannelMigrations(pool,['waba-r4-channel.sql','waba-r5-channel.sql']);
   store=createPostgresChannelStore({pool});
   claims=createPgPayerClaims({pool});
   inbox=createPgSignedInbox({pool,appSecret:secret,encryptionKey:key});

@@ -4,6 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {Pool}=require('pg');
+const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createPostgresChannelStore,digestEvent}=
  require('../src/businessosPgChannelStore');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
@@ -15,8 +16,7 @@ const {before,after}=require('node:test');
 if(process.env.R4_POSTGRES_TEST_URL){
  before(async()=>{
   pool=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:12});
-  await pool.query(fs.readFileSync(
-   path.resolve(__dirname,'../db/waba-r4-channel.sql'),'utf8'));
+  await applyTestChannelMigrations(pool,['waba-r4-channel.sql']);
   store=createPostgresChannelStore({pool});
  });
  after(async()=>{if(pool)await pool.end();});

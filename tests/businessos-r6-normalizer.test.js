@@ -2,6 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {Pool}=require('pg');
+const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createPgSignedInbox}=require('../src/businessosPgSignedInbox');
 const {createPgInboxNormalizer}=require('../src/businessosPgInboxNormalizer');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
@@ -20,8 +21,7 @@ const {before,after}=require('node:test');
 if(process.env.R4_POSTGRES_TEST_URL){
  before(async()=>{
   pool=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:15});
-  for(const f of ['waba-r4-channel.sql','waba-r5-channel.sql','waba-r6-channel.sql'])
-   await pool.query(fs.readFileSync(path.resolve(__dirname,'../db',f),'utf8'));
+  await applyTestChannelMigrations(pool,['waba-r4-channel.sql','waba-r5-channel.sql','waba-r6-channel.sql']);
   ingress=createPgSignedInbox({pool,appSecret:SECRET,encryptionKey:KEY});
   worker=createPgInboxNormalizer({pool,encryptionKey:KEY});
  });
