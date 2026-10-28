@@ -1,0 +1,15 @@
+# WABA ↔ BusinessOS R9 — Cliente Security Engine S2S, solo offline
+
+## Contrato verificado en código real de BusinessOS (solo lectura)
+En `omarge/businessos-security-engine/main` `ServiceAuthorizationController`, `ServiceAuthorizationRequest` y `ServiceAuthorizationDecision`: `POST /internal/security/v1/service/authorize` exige Bearer **ServiceCredential** auténtico; campos exactos `targetTenantId`, `audience=Payment`, `permission=payment.authorize`, `scopeType=TENANT`, `scopeValue=null`, `scopeTenantId=tenant`, `targetType=null`, `targetId=null`. El tenant solicitado es intención, NO concesión. 200 permite solo cuando Security Engine valida principal y concesión de permiso/scope; 401/403 no permiten operación; 503 no permite operación.
+El token delegado emitido por `/service/authorize` es el que WABA presentaría a Payment Engine; `omarge/businessos-payment-engine/master` `SecurityEngineInternalServiceAuth` valida **dentro de Payment Engine** contra `POST /internal/security/v1/service/validate` usando `audience=Payment`, `permission=payment.authorize` y el tenant de la solicitud. WABA no debe falsificar ni omitir esta segunda frontera.
+
+## Implementación R9
+- `src/businessosSecurityS2SClient.js` crea cliente HTTPS single-shot apuntando SOLO al path constante `/internal/security/v1/service/authorize`, host HTTPS fijo de configuración confiable, sin redirecciones ni rutas controladas por navegador. El transporte exige TLS `rejectUnauthorized:true`, timeout y tamaño JSON delimitados.
+- ServiceCredential se obtiene de `credentialProvider()` inyectado (sin cargar `.env`, sin registrar ni persistir token). Se envía exclusivamente en encabezado `Authorization: Bearer ...`; nunca en cuerpo, URL, excepciones ni tablas PostgreSQL.
+- Reutiliza `createBusinessosDelegationGate` de R7: confirma `allowed===true` y coincide exactamente tenant autorizado, audiencia, permiso, scope TENANT, actor y token delegado. Credencial inválida, DENY, expiración, timeout, 503, redirect, respuesta HTML, truncada o malformada fallan cerrados.
+- `enabled=false` por defecto; ni proveedor de credenciales ni socket se invocan si se deja desactivado. No hay conexión con `src/index.js`, dispatcher, outbox ni Payment. Solo tests con fake request HTTPS. No hay cuenta ni permiso real provisionado.
+
+## Condiciones antes de operación real
+Provisionar servicio propio de WABA en BusinessOS Security Engine y conceder acceso tenant/Payment/payment.authorize bajo revisión de seguridad, sin introducir credenciales en chat o GitHub. Obtener `customerId`, `paymentMethodReference` y aprobación Fraud de fuentes canónicas. Certificar mapeo durable del request con consentimiento del pagador antes de llamar al Payment Engine; no existe esta orquestación live ni captura real.
+El Payment Engine mantiene su propio NO_GO; `AUTHORIZED` no significa `PAID`. Meta revisión/entrega real y R8 transporte real siguen sin certificar. No se habilita runtime, no se modifica `.env`, `main/master`, servidores ni repos BusinessOS. Todos los tests no hacen pagos ni tráfico externo.
