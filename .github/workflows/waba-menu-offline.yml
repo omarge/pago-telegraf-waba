@@ -1,0 +1,24 @@
+name: WABA menu offline
+on:
+  push:
+    branches: [main, feature/waba-menu-microapps-f01]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax
+        run: |
+          node --check src/index.js
+          node --check src/formServer.js
+          node --check src/webhook.js
+          node --check src/navigation.js
+          node --check src/microapps.js
+      - name: Offline regression
+        run: node --test tests/*.test.js
