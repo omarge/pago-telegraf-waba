@@ -3,6 +3,15 @@ const https = require('https');
 const TOKEN = process.env.WABA_TOKEN;
 const PHONE_ID = process.env.WABA_PHONE_ID;
 
+function normalizePhone(to) {
+  if (!to) return to;
+  // Mexican numbers: WhatsApp sends 521... but Cloud API often wants 52...
+  if (to.startsWith('521') && to.length === 13) {
+    return '52' + to.slice(3);
+  }
+  return to;
+}
+
 function api(method, path, body) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
@@ -30,6 +39,7 @@ function api(method, path, body) {
 }
 
 async function sendMessage(to, text) {
+  to = normalizePhone(to);
   return api('POST', `${PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
     to,
@@ -39,6 +49,7 @@ async function sendMessage(to, text) {
 }
 
 async function sendButtons(to, text, buttons) {
+  to = normalizePhone(to);
   return api('POST', `${PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
     to,
@@ -57,6 +68,7 @@ async function sendButtons(to, text, buttons) {
 }
 
 async function sendList(to, text, buttonText, sections) {
+  to = normalizePhone(to);
   return api('POST', `${PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
     to,
