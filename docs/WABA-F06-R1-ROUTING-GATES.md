@@ -30,3 +30,6 @@ Salida:
 
 ## Certificación GitHub Actions
 El nuevo workflow ejecuta únicamente pruebas offline; sus GREEN no equivalen a Meta real. No integra ni altera rutas de cobro, PSP o notificaciones en runtime.
+
+## R2 — Diagnóstico de bloqueos simultáneos (evidencia real)
+Preflight operador: `F06_LINKED_ACCOUNTS=1`, `F06_DISTINCT_DESTINATIONS=1`, `F06_TEST_TO_OVERRIDE=ON`, `F06_ROUTING_PREFLIGHT=BLOCKED_TEST_TO_REDIRECT`. Es una evaluación ordenada; también falta un segundo WhatsApp vinculado. Se agrega `F06_BLOCKERS` para mostrar **ambos motivos**, sin imprimir números ni secretos. No habilitar notificaciones ni modificar `.env` automáticamente. Se requiere vincular segunda cuenta por flujo UI autenticado y una decisión controlada del operador sobre el override de pruebas, previa verificación de Meta.

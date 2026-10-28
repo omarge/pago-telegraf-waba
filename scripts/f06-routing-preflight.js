@@ -26,15 +26,14 @@ function assess({accounts=[],env={},getLinkedWhatsApp}={}){
  }
  const unique=[...new Set(eligible)];
  // Do not echo environment values or any personal identifying information.
- const status=!env.WABA_TOKEN||!env.WABA_PHONE_ID?
-  'BLOCKED_META_CONFIG_MISSING':
-  !!env.WABA_TEST_TO?
-  'BLOCKED_TEST_TO_REDIRECT':
-  unique.length<2?
-  'BLOCKED_NEED_TWO_DISTINCT_WHATSAPP_ACCOUNTS':
-  'CONFIG_READY_META_UNVERIFIED';
+ const blockers=[];
+ if(!env.WABA_TOKEN||!env.WABA_PHONE_ID)blockers.push('BLOCKED_META_CONFIG_MISSING');
+ if(env.WABA_TEST_TO)blockers.push('BLOCKED_TEST_TO_REDIRECT');
+ if(unique.length<2)blockers.push('BLOCKED_NEED_TWO_DISTINCT_WHATSAPP_ACCOUNTS');
+ const status=blockers[0]||'CONFIG_READY_META_UNVERIFIED';
  return Object.freeze({
   status,
+  blockers:Object.freeze(blockers),
   linkedAccounts:eligible.length,
   distinctDestinations:unique.length,
   testRedirectActive:!!env.WABA_TEST_TO,
@@ -58,6 +57,7 @@ function run({root=process.cwd(),env=process.env,log=console}={}){
  log.log('F06_LINKED_ACCOUNTS='+result.linkedAccounts);
  log.log('F06_DISTINCT_DESTINATIONS='+result.distinctDestinations);
  log.log('F06_TEST_TO_OVERRIDE='+(result.testRedirectActive?'ON':'OFF'));
+ log.log('F06_BLOCKERS='+result.blockers.join(','));
  log.log('F06_META_APPROVAL=NOT_VERIFIED');
  log.log('F06_META_MESSAGES_SENT=0');
  log.log('F06_OPENPAY_CHARGES=0');

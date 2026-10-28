@@ -28,6 +28,7 @@ test('F06 fail-closed when WABA_TEST_TO redirects all recipients to one test des
  assert.equal(r.status,'BLOCKED_TEST_TO_REDIRECT');
  assert.equal(r.testRedirectActive,true);
  assert.equal(r.distinctDestinations,2);
+ assert.deepEqual(r.blockers,['BLOCKED_TEST_TO_REDIRECT']);
 });
 test('F06 detects same destination in 52 and 521 representations',()=>{
  const r=check(['5215545827276','525545827276']);
@@ -70,4 +71,23 @@ test('F06 preflight reads account records but never writes to local account file
   assert.ok(logged.includes('F06_OPENPAY_CHARGES=0'));
   assert.ok(!logged.join('\n').includes('secret-not-to-log'));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('F06 exposes BOTH independent blockers when only one account and redirect are configured',()=>{
+ const r=check(['5215545827276'],{WABA_TEST_TO:'525551112222'});
+ assert.equal(r.status,'BLOCKED_TEST_TO_REDIRECT');
+ assert.deepEqual(r.blockers,[
+  'BLOCKED_TEST_TO_REDIRECT',
+  'BLOCKED_NEED_TWO_DISTINCT_WHATSAPP_ACCOUNTS'
+ ]);
+ assert.equal(r.deliveredMessages,0);
+ assert.equal(r.charges,0);
+});
+test('F06 config check keeps missing Meta settings alongside routing and account blockers',()=>{
+ const r=check(['5215545827276'],{WABA_TEST_TO:'testnumber',WABA_TOKEN:''});
+ assert.deepEqual(r.blockers,[
+  'BLOCKED_META_CONFIG_MISSING',
+  'BLOCKED_TEST_TO_REDIRECT',
+  'BLOCKED_NEED_TWO_DISTINCT_WHATSAPP_ACCOUNTS'
+ ]);
 });
