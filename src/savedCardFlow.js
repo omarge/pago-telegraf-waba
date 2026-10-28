@@ -15,7 +15,13 @@ function createSavedCardFlow({vault,requestStore,accounts,notify=async()=>{},ena
  async function pay({accountId,requestId,cardId,pin,deviceSessionId,consent,csrfVerified}){
   const r=requestStore.getRequest(requestId);
   if(!r)return {state:'NOT_FOUND'};
-  if(r.state!=='PENDING')return {state:r.state,chargeId:r.providerChargeId||null};
+  if(r.state!=='PENDING'){
+   // Replay of a verified payment: preserve amount for receipt rendering.
+   // No PSP execution, journal mutation or notification in this branch.
+   const replay={state:r.state,chargeId:r.providerChargeId||null};
+   if(r.state==='PAID')replay.amountCents=r.amount;
+   return replay;
+  }
   if(!enabled||!vault.provider?.chargeSavedCard||!vault.provider?.getCharge)
    return {state:'DISABLED'};
   if(!csrfVerified||consent!==true)return {state:'INVALID_CONFIRMATION'};

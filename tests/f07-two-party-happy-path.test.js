@@ -200,7 +200,9 @@ test('F07 whole two-party happy path via HTTP: menu, request once, login, saved 
   }),null);
   r=await call(form,'/pay/app/pay/'+REQUEST,postPay(payerCookie,csrf,card));
   assert.equal(r.status,200);
-  assert.doesNotMatch(await r.text(),/NaN|undefined/,'repeated receipt must retain verified amount');
+  const repeatReceipt=await r.text();
+  assert.doesNotMatch(repeatReceipt,/NaN|undefined/,'repeated receipt must retain verified amount');
+  assert.match(repeatReceipt,/Importe: \$10\.00 MXN/);
   assert.equal(f.calls.filter(x=>x==='POST_CHARGE').length,1);
   assert.equal(f.journal.listForAccount(f.payer.id,f.accounts).length,1);
   assert.equal(f.outgoing.filter(x=>x.body?.includes('✅ Pago completado')).length,2);
