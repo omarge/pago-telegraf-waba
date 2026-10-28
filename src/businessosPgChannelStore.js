@@ -6,6 +6,8 @@ const crypto=require('node:crypto');
 const ORDER=/^KPR-[A-F0-9]{32}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const META_ID=/^[A-Za-z0-9._:-]{4,255}$/;
+const PHONE=/^\d{8,20}$/;
+const PHONE_ID=/^\d{8,24}$/;
 const DIGEST=/^[a-f0-9]{64}$/;
 function validId(x){return typeof x==='string'&&ID.test(x);}
 function validMoney(x){return Number.isSafeInteger(x)&&x>0;}
@@ -25,7 +27,7 @@ function createPostgresChannelStore({pool}={}){
   }finally{conn.release();}
  }
  async function createRequest({requestId,requesterId,amountCents}={}){
-  if(!ORDER.test(requestId||'')||!validId(requesterId)||!validMoney(amountCents))
+  if(!ORDER.test(requestId||'')||!PHONE.test(requesterId||'')||!validMoney(amountCents))
    return {state:'INVALID'};
   return transact(async client=>{
    const result=await client.query(
@@ -43,7 +45,7 @@ function createPostgresChannelStore({pool}={}){
  }
  async function bindPayer({requestId,payerAccountId,amountCents,requesterId}={}){
   if(!ORDER.test(requestId||'')||!validId(payerAccountId)||
-     !validMoney(amountCents)||!validId(requesterId))return {state:'INVALID'};
+     !validMoney(amountCents)||!PHONE.test(requesterId||''))return {state:'INVALID'};
   return transact(async client=>{
    const r=await client.query(
     'SELECT * FROM waba_channel.requests WHERE request_id=$1 FOR UPDATE',
@@ -76,7 +78,7 @@ function createPostgresChannelStore({pool}={}){
   // No unverified internet input is admitted; ingress F09 must authenticate
   // the ORIGINAL bytes, not a parsed/re-serialized JSON object.
   if(signatureVerified!==true)return {state:'UNVERIFIED'};
-  if(!validId(phoneNumberId)||!META_ID.test(messageId||'')||
+  if(!PHONE_ID.test(phoneNumberId||'')||!META_ID.test(messageId||'')||
      !['MESSAGE','STATUS_SENT','STATUS_DELIVERED','STATUS_READ','STATUS_FAILED'].includes(kind)||
      !DIGEST.test(eventDigest||''))return {state:'INVALID'};
   return transact(async client=>{

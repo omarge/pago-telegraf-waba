@@ -116,7 +116,7 @@ pgTest('R4 owner and pending checks prevent reservation, even with valid idempot
  assert.equal((await store.reserveAuthorization({requestId:a,payerAccountId:payer,idempotencyKey:key})).state,'NOT_PENDING');
 });
 pgTest('R4 Postgres reconnect retains requests, inbox and single-shot reserve',async()=>{
- const a=req('G');
+ const a=req('9');
  await store.createRequest({requestId:a,requesterId:requester,amountCents:500});
  await store.bindPayer({requestId:a,payerAccountId:payer,requesterId:requester,amountCents:500});
  const key='waba-r4-restart-reservation-000001';
