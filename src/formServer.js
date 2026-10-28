@@ -10,10 +10,10 @@ function startFormServer(port = 8765) {
     if (!inv) {
       return res.status(404).send('Enlace inválido o expirado.');
     }
-    const req = store.createRequest(inv.requesterId, 'waba-payer', inv.amount);
+    const payment = store.createRequest(inv.requesterId, 'waba-payer', inv.amount);
     const amountText = (inv.amount / 100).toFixed(2);
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(paymentPage(req.id, amountText));
+    res.send(paymentPage(payment.id, amountText));
   });
 
   app.get('/healthz', (_req, res) => res.send('ok'));
