@@ -6,6 +6,16 @@
  const value=id=>document.getElementById(id).value;
  const clear=()=>{document.getElementById('pan').value='';document.getElementById('cvv').value='';};
  const say=text=>{status.textContent=text;};
+ const safeCode=error=>{
+  const code=error?.data?.error_code ?? error?.error_code;
+  const text=String(code??'');
+  return /^[0-9]{3,6}$/.test(text)?text:null;
+ };
+ const safeHttpCode=error=>{
+  const code=error?.status ?? error?.data?.http_code;
+  const text=String(code??'');
+  return /^[1-5][0-9]{2}$/.test(text)?text:null;
+ };
  try{
   if(!window.OpenPay||!OpenPay.deviceData?.setup)throw Error('Openpay no disponible');
   OpenPay.setId(root.dataset.merchant);
@@ -22,10 +32,10 @@
   const profile={firstName:value('first'),lastName:value('last')};
   const details={
    holder_name:value('holder'),
-   card_number:value('pan'),
-   expiration_month:value('month'),
-   expiration_year:value('year'),
-   cvv2:value('cvv')
+   card_number:value('pan').replace(/[\s-]/g,''),
+   expiration_month:value('month').trim(),
+   expiration_year:value('year').trim(),
+   cvv2:value('cvv').trim()
   };
   say('Tokenizando directamente con Openpay…');
   try{
@@ -47,8 +57,14 @@
      say('Tarjeta registrada: '+card.brand+' •••• '+card.last4);
     }catch(e){say(e.message);}
     finally{button.disabled=false;}
-   },_error=>{
-    clear();say('Tokenización rechazada por Openpay.');
+   },error=>{
+    // Do not display or log the untrusted response body, card data or tokens.
+    const code=safeCode(error),http=safeHttpCode(error);
+    clear();
+    say('Tokenización rechazada por Openpay.'+
+      (code?' Código '+code+'.':'')+
+      (http?' HTTP '+http+'.':'')+
+      ' Revisa los datos de prueba y la configuración de Openpay Sandbox.');
     button.disabled=false;
    });
   }catch(e){
