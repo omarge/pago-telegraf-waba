@@ -1,0 +1,26 @@
+name: WABA F03 Enrollment and PIN Happy Path
+on:
+  push:
+    branches:
+      - audit/waba-f03-happy-path-enroll-pin-20261028
+  pull_request:
+    paths:
+      - 'tests/f03-http-enroll-pin.test.js'
+      - '.github/workflows/waba-f03-enroll-pin.yml'
+permissions:
+  contents: read
+jobs:
+  enroll-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: F03 full HTTP flow with fake Openpay and zero charges
+        run: node --test tests/f03-http-enroll-pin.test.js
+      - name: Full F01-F06 offline regression
+        run: node --test tests/*.test.js

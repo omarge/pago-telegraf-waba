@@ -151,3 +151,59 @@ test('HTTP sessions isolate cards; NIP form verifies CSRF and password',async()=
   assert.equal(vault.profile(accounts.getSession(bob.token).accountId).pinConfigured,false);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('F03 provider failure identifies only the stage (no token or account leakage)',async()=>{
+ const accounts=createAccountService({filePath:null});
+ const a=accounts.register('stage@example.com','secret-test-password-12345');
+ const accountId=accounts.getSession(a.token).accountId;
+ const logs=[];
+ const provider={
+  merchantId:'merchant1234',publicKey:'pk_fake',
+  async createCustomer(){return {id:'customer12345678'};},
+  async addCard(){
+   const e=Error('SENSITIVE: token_and_private_key_must_not_log');
+   e.openpayHttpStatus=422;e.openpayCode='2004';
+   throw e;
+  }
+ };
+ const vault=createVault({filePath:null,provider,pepper});
+ const app=express();
+ app.use('/pay/app',createAccountRouter({service:accounts,vault,logger:{warn:(...args)=>logs.push(args)}}));
+ // createAccountRouter uses the default card logger; use direct route to capture.
+ const {createCardRoutes}=require('../src/cardRoutes');
+ const f03=createCardRoutes({accounts,vault,logger:{warn:(...args)=>logs.push(args)}});
+ const api=express();api.use(express.json());
+ api.use('/pay/app/api/cards', (req,res,next)=>{
+  req.account=accounts.getSession(a.token);req.sessionToken=a.token;next();
+ },f03.api);
+ const server=await new Promise(ok=>{const x=api.listen(0,'127.0.0.1',()=>ok(x));});
+ try{
+  const response=await fetch('http://127.0.0.1:'+server.address().port+'/pay/app/api/cards/enroll',{
+   method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':a.csrf},
+   body:JSON.stringify({tokenId:'token_f03_valid000',deviceSessionId:'device_f03_valid000',
+    firstName:'Test',lastName:'User',consent:true})
+  });
+  assert.equal(response.status,409);
+  const body=await response.json();
+  assert.equal(body.stage,'CREATE_CARD');
+  assert.equal(body.openpayHttpStatus,422);
+  assert.equal(body.openpayCode,'2004');
+  assert.equal(JSON.stringify(body).includes('SENSITIVE'),false);
+  assert.equal(JSON.stringify(logs).includes('SENSITIVE'),false);
+  assert.equal(JSON.stringify(logs).includes('token_f03'),false);
+  assert.equal(vault.profile(accountId).cards.length,0);
+ }finally{await new Promise(ok=>server.close(ok));}
+});
+
+test('F03: empty device session is rejected before any Openpay customer request with a safe stage',async()=>{
+ let requests=0;
+ const provider={merchantId:'merchant1234',publicKey:'pk_fake',async createCustomer(){requests++;return {id:'customer12345678'};}};
+ const vault=createVault({filePath:null,provider,pepper});
+ const params={tokenId:'token_f03_abcdef01234567',deviceSessionId:'',
+  firstName:'Test',lastName:'Person',email:'test@example.com',consent:true};
+ await assert.rejects(vault.enroll('account-f03-123456',params),e=>e.enrollmentStage==='VALIDATE_DEVICE');
+ assert.equal(requests,0);
+ await assert.rejects(vault.enroll('account-f03-123456',{...params,deviceSessionId:'device_test_123456',tokenId:''}),
+  e=>e.enrollmentStage==='VALIDATE_TOKEN');
+ assert.equal(requests,0);
+});

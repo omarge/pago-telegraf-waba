@@ -6,6 +6,10 @@ const {createVault}=require('./cardVault');
 const {createSandboxProvider}=require('./openpayCardProvider');
 const defaultVault=createVault({provider:createSandboxProvider()});
 const enrollJs=fs.readFileSync(path.join(__dirname,'enrollClient.js'),'utf8');
+const F03_STAGES=new Set(['CREATE_CUSTOMER','STORE_CUSTOMER','CREATE_CARD','GET_CARD','VERIFY_CARD','STORE_CARD',
+ 'VALIDATE_CONSENT','VALIDATE_TOKEN','VALIDATE_DEVICE','VALIDATE_NAME','VALIDATE_EMAIL','VALIDATE_LIMIT']);
+function safeStatus(error){return Number.isInteger(error?.openpayHttpStatus)&&error.openpayHttpStatus>=400&&error.openpayHttpStatus<=599?error.openpayHttpStatus:null;}
+function safeCode(error){return /^[0-9]{3,6}$/.test(String(error?.openpayCode??''))?String(error.openpayCode):null;}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function page(title,body,attrs=''){
  return '<!doctype html><html lang="es"><head><meta charset="utf-8">'+
@@ -54,7 +58,6 @@ function enrollPage(state,provider,csrf){
  '<label>Mes<input id="month" inputmode="numeric" required maxlength="2"></label>'+
  '<label>Año<input id="year" inputmode="numeric" required maxlength="2"></label>'+
  '<label>CVV de prueba<input id="cvv" inputmode="numeric" required maxlength="4" autocomplete="off"></label>'+
- '<input id="device-id" type="hidden">'+
  '<label><input id="consent" type="checkbox" style="width:auto" required> Autorizo guardar esta tarjeta de prueba.</label>'+
  '<button id="submit" disabled>Guardar tarjeta</button></form>'+
  '<p role="status" id="status">Iniciando Openpay…</p>'+
@@ -66,7 +69,7 @@ function enrollPage(state,provider,csrf){
   escapeHtml(provider.publicKey)+'" data-csrf="'+escapeHtml(csrf)+'"';
  return page('Guardar tarjeta',content,attrs);
 }
-function createCardRoutes({accounts,vault=defaultVault}={}){
+function createCardRoutes({accounts,vault=defaultVault,logger=console}={}){
  if(!accounts||typeof accounts.validCsrf!=='function')throw Error('Account service required');
  const api=express.Router();
  api.use(express.json({limit:'8kb'}));
@@ -81,9 +84,15 @@ function createCardRoutes({accounts,vault=defaultVault}={}){
     consent:input.consent
    });
    return res.status(201).json(card);
-  }catch(_e){
+  }catch(error){
+   // Diagnostics are deliberately restricted to an internal stage and numeric codes.
+   // Do not log raw Openpay responses, request body, token, device session or customer/card IDs.
+   const stage=F03_STAGES.has(error?.enrollmentStage)?error.enrollmentStage:'VALIDATION';
+   const openpayHttpStatus=safeStatus(error),openpayCode=safeCode(error);
+   logger.warn('[f03-enroll]',{stage,openpayHttpStatus,openpayCode});
    return res.status(vault.profile(req.account.accountId).enrollmentEnabled?409:503)
-    .json({error:'Registro de tarjeta no confirmado. Consulta las tarjetas antes de reintentar.'});
+    .json({error:'Registro de tarjeta no confirmado. Consulta las tarjetas antes de reintentar.',
+     stage,openpayHttpStatus,openpayCode});
   }
  });
  return {
