@@ -1,0 +1,35 @@
+name: WABA F09 Signed Public Webhook Offline
+on:
+  push:
+    branches:
+      - audit/waba-f09-public-webhook-signature-20261028
+  pull_request:
+    paths:
+      - 'src/index.js'
+      - 'tests/f09-public-webhook-signature.test.js'
+      - 'tests/f06-http-e2e.test.js'
+      - 'tests/f07-two-party-happy-path.test.js'
+      - 'scripts/f08-uat-readiness.js'
+      - '.github/workflows/waba-f09-public-webhook-signature.yml'
+permissions:
+  contents: read
+jobs:
+  signed-public-webhook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: F09 adversarial public ingress and all regressions
+        env:
+          WABA_TOKEN: ''
+          OPENPAY_PRIVATE_KEY: ''
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: |
+          node --check src/index.js
+          node --test tests/*.test.js
