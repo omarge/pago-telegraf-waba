@@ -68,3 +68,24 @@ test('F08 all auth microapps still redirect without session (no public data leak
   assert.equal((await fetch(s.url+'/healthz')).status,200);
  }finally{await s.close();}
 });
+
+test('F08 safe default checkout does not offer legacy PAN/CVV form or token charge',async()=>{
+ const app=createFormApp({accountRouter:express.Router(),
+  merchant:'fake-merchant',privateKey:'fake-psp-key',
+  showSavedCardOption:true,
+  paymentStore:{
+   consumeInvite:()=>({requesterId:'5215555550001',amount:1000}),
+   createRequest:()=>({id:'KPR-'+('A'.repeat(32))})
+  },
+  charge:async()=>{throw Error('must not charge');}
+ });
+ const s=await server(app);
+ try{
+  const r=await fetch(s.url+'/pay/request/f08-offline',{redirect:'manual'});
+  assert.equal(r.status,200);
+  const html=await r.text();
+  assert.match(html,/Pagar con tarjeta guardada/);
+  assert.match(html,/\$10.00 MXN/);
+  assert.doesNotMatch(html,/<form id="payment"|\/pay\/charge|id="pan"|id="cvv"/);
+ }finally{await s.close();}
+});

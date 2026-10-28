@@ -83,6 +83,7 @@ test('F06 HTTP E2E F00: Meta webhook -> cobrar -> 1000 -> pay/request -> mock ch
  const charges=[];
  const form=await serve(createFormApp({
   paymentStore:store,accountRouter:appRouter,
+  legacyChargeEnabled:true,
   merchant:'merchant-f06',privateKey:'fake-private-test',
   messenger:msg.api,charge:async(token,amount)=>{
    charges.push({token,amount});return {id:'chargeF06Test123',status:'completed'};
