@@ -53,9 +53,9 @@ function receipt(result,view){
  return page('<h1>Pago no realizado</h1>'+
   '<p>Estado: '+esc(result.state)+'</p><a href="/pay/app/pay/'+esc(view.requestId)+'">Volver</a>');
 }
-function createSavedCardRoutes({accounts,vault,requestStore,notifier,enabled=false}={}){
+function createSavedCardRoutes({accounts,vault,requestStore,notifier,journal,enabled=false}={}){
  if(!accounts||!vault||!requestStore)throw Error('Missing payment dependencies');
- const flow=createSavedCardFlow({accounts,vault,requestStore,notify:notifier,enabled});
+ const flow=createSavedCardFlow({accounts,vault,requestStore,notify:notifier,journal,enabled});
  const router=express.Router();
  router.get('/assets/saved-pay.js',(_req,res)=>res.type('application/javascript').send(require('node:fs').readFileSync(require('node:path').join(__dirname,'savedPayClient.js'),'utf8')));
  router.get('/pay/:requestId',(req,res)=>{

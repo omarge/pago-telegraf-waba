@@ -4,6 +4,8 @@ const {accountService}=require('./accountService');
 const {renderPage}=require('./microapps');
 const {createCardRoutes}=require('./cardRoutes');
 const {createSavedCardRoutes}=require('./savedCardRoutes');
+const {createStatementRoutes}=require('./statementRoutes');
+const {statementJournal}=require('./statementJournal');
 const paymentStore=require('./store');
 const {sendMessage}=require('./waba');
 const COOKIE='kashbit_web_session';
@@ -32,7 +34,7 @@ function cookieToken(req){
 function safeReturnPath(value){
  return typeof value==='string'&&/^\/pay\/app\/pay\/KPR-[0-9A-F]{32}$/.test(value)?value:null;
 }
-function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1'}={}){
+function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,journal=statementJournal,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1'}={}){
  const router=express.Router();
  router.use(express.urlencoded({extended:false,limit:'8kb'}));
  router.use((_req,res,next)=>{res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');next();});
@@ -128,9 +130,10 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
  });
  const cardApp=createCardRoutes({accounts:service,vault});
  const savedPay=createSavedCardRoutes({
-  accounts:service,vault:cardApp.vault,requestStore,notifier,enabled:savedCardEnabled
+  accounts:service,vault:cardApp.vault,requestStore,notifier,journal,enabled:savedCardEnabled
  });
  router.use('/',requireSession,savedPay.router);
+ router.use('/',requireSession,createStatementRoutes({accounts:service,journal}));
  router.use('/api/cards',requireSession,cardApp.api);
  router.get('/assets/enroll.js',requireSession,cardApp.enrollScript);
  router.get('/cards',requireSession,cardApp.cards);
