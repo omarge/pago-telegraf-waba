@@ -1,0 +1,45 @@
+name: WABA BusinessOS R9 Security Engine S2S Contract Offline
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r9-security-engine-s2s-20261028
+  pull_request:
+    paths:
+      - 'src/businessosSecurityS2SClient.js'
+      - 'tests/businessos-r9-security-s2s.test.js'
+      - '.github/workflows/waba-businessos-r9-security.yml'
+permissions:
+  contents: read
+jobs:
+  r9-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_r9
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_r9_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_r9 -d waba_r9_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_r9:offline_test_only@127.0.0.1:5432/waba_r9_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: R9 Security Engine contract and WABA regressions offline
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosSecurityS2SClient.js
+          node --test tests/*.test.js
