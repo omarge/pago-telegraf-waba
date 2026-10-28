@@ -61,6 +61,13 @@ function createAccountService({filePath=DEFAULT_FILE,now=()=>Date.now()}={}){
   if(expected.length!==actual.length||!crypto.timingSafeEqual(expected,actual))return null;
   return sessionFor(account.id);
  }
+ function verifyPassword(accountId,password){
+  const account=accounts.find(a=>a.id===accountId);
+  if(!account||typeof password!=='string'||password.length>256)return false;
+  const actual=crypto.scryptSync(password,Buffer.from(account.salt,'hex'),64);
+  const expected=Buffer.from(account.digest,'hex');
+  return expected.length===actual.length&&crypto.timingSafeEqual(expected,actual);
+ }
  function logout(token){if(typeof token==='string')sessions.delete(sha(token));}
  function validCsrf(token,csrf){
   const session=getSession(token);
@@ -97,7 +104,7 @@ function createAccountService({filePath=DEFAULT_FILE,now=()=>Date.now()}={}){
   const account=accounts.find(a=>a.waId===waId);
   return account?{id:account.id}:null;
  }
- return {register,login,logout,getSession,validCsrf,beginLink,bindFromWhatsApp,getLinkedAccount};
+ return {register,login,logout,getSession,validCsrf,verifyPassword,beginLink,bindFromWhatsApp,getLinkedAccount};
 }
 const accountService=createAccountService();
 module.exports={createAccountService,accountService,SESSION_MS,LINK_MS};

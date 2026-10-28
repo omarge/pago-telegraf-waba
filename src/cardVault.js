@@ -113,6 +113,6 @@ function createVault({filePath=DEFAULT_FILE,pepper=process.env.KASHBIT_PIN_PEPPE
    return {id:card.id,brand,last4};
   }finally{busy.delete(accountId);}
  }
- return {profile,setPin,verifyPin,enroll};
+ return {profile,setPin,verifyPin,enroll,provider};
 }
 module.exports={createVault};

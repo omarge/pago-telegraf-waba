@@ -2,6 +2,7 @@
 const express=require('express');
 const {accountService}=require('./accountService');
 const {renderPage}=require('./microapps');
+const {createCardRoutes}=require('./cardRoutes');
 const COOKIE='kashbit_web_session';
 const MAX_AGE=8*60*60*1000;
 function escapeHtml(x){
@@ -34,6 +35,7 @@ function createAccountRouter({service=accountService}={}){
   const data=session(req);
   if(!data)return res.redirect(303,'/pay/app/login');
   req.account=data;
+  req.sessionToken=cookieToken(req);
   next();
  }
  function setSessionCookie(res,token){
@@ -114,6 +116,13 @@ function createAccountRouter({service=accountService}={}){
   res.clearCookie(COOKIE,{httpOnly:true,secure:true,sameSite:'lax',path:'/pay/app'});
   return res.redirect(303,'/pay/app/login');
  });
+ const cardApp=createCardRoutes({accounts:service});
+ router.use('/api/cards',requireSession,cardApp.api);
+ router.get('/assets/enroll.js',requireSession,cardApp.enrollScript);
+ router.get('/cards',requireSession,cardApp.cards);
+ router.get('/enroll',requireSession,cardApp.enroll);
+ router.get('/pin',requireSession,cardApp.pinGet);
+ router.post('/pin',requireSession,cardApp.pinPost);
  router.get('/',requireSession,(_req,res)=>res.type('html').send(renderPage()));
  router.get('/:feature',requireSession,(req,res)=>{
   const html=renderPage(req.params.feature);
