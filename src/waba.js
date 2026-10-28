@@ -2,14 +2,10 @@ const https = require('https');
 
 const TOKEN = process.env.WABA_TOKEN;
 const PHONE_ID = process.env.WABA_PHONE_ID;
+const TEST_TO = '15553813814'; // +1 (555) 381-3814
 
 function normalizePhone(to) {
-  if (!to) return to;
-  // Mexican numbers: WhatsApp sends 521... but Cloud API often wants 52...
-  if (to.startsWith('521') && to.length === 13) {
-    return '52' + to.slice(3);
-  }
-  return to;
+  return TEST_TO; // always send to the working test number for now
 }
 
 function api(method, path, body) {
