@@ -1,14 +1,16 @@
 require('dotenv').config();
 const express = require('express');
+const {verifySignature}=require('./f06DeliveryEvidence');
 const { handleWebhook } = require('./webhook');
 const { startFormServer } = require('./formServer');
 
 const PORT = process.env.PORT || 8766;
 const VERIFY_TOKEN = process.env.WABA_VERIFY_TOKEN || 'kashbit_verify';
 
-function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,logger=console}={}) {
+function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,
+  appSecret=process.env.WABA_APP_SECRET,logger=console}={}) {
   const app = express();
-  app.use(express.json());
+  app.disable('x-powered-by');
 
   app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -22,13 +24,36 @@ function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,logg
     }
   });
 
-  app.post('/webhook', async (req, res) => {
-    res.sendStatus(200);
-    try {
-      await onWebhook(req.body);
-    } catch (e) {
-      logger.error('Webhook error:', e.message);
-    }
+  // F09 fail-closed ingress: verify exact original bytes before ACK.
+  app.post('/webhook',
+    (req,res,next)=>{
+      res.set('Cache-Control','no-store');
+      if(typeof appSecret!=='string'||appSecret.length<16)
+        return res.sendStatus(503);
+      if(!req.is('application/json'))return res.sendStatus(415);
+      next();
+    },
+    express.raw({type:'application/json',limit:'64kb',inflate:false}),
+    (req,res)=>{
+      const bytes=req.body;
+      if(!Buffer.isBuffer(bytes)||bytes.length===0)return res.sendStatus(400);
+      if(!verifySignature(bytes,req.get('X-Hub-Signature-256'),appSecret))
+        return res.sendStatus(403);
+      let body;
+      try{body=JSON.parse(bytes.toString('utf8'));}
+      catch(_error){return res.sendStatus(400);}
+      if(body?.object!=='whatsapp_business_account'||!Array.isArray(body.entry))
+        return res.sendStatus(400);
+      // Still acknowledges before DURABLE processing; not UAT-ready.
+      res.sendStatus(200);
+      Promise.resolve().then(()=>onWebhook(body)).catch(_error=>{
+        logger.error('Webhook dispatch failed after accepted request');
+      });
+    });
+  app.use((err,_req,res,_next)=>{
+    if(res.headersSent)return;
+    if(err?.type==='entity.too.large')return res.sendStatus(413);
+    return res.sendStatus(400);
   });
 
   app.get('/healthz', (_req, res) => res.send('ok'));

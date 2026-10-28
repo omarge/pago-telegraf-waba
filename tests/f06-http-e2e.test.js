@@ -1,6 +1,9 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
+const F09_SECRET='offline-test-meta-app-secret-for-f06-e2e';
+const signedHeader=raw=>('sha256='+crypto.createHmac('sha256',F09_SECRET).update(raw).digest('hex'));
 const {createWebhookApp}=require('../src/index');
 const {createWebhook}=require('../src/webhook');
 const {createFormApp}=require('../src/formServer');
@@ -57,7 +60,8 @@ function fakeMetaBody(from,text){
 }
 async function sendInbound(base,from,body){
  const response=await fetchLocal(base,'/webhook',{
-  method:'POST',headers:{'Content-Type':'application/json'},
+  method:'POST',headers:{'Content-Type':'application/json',
+   'X-Hub-Signature-256':signedHeader(JSON.stringify(fakeMetaBody(from,body)))},
   body:JSON.stringify(fakeMetaBody(from,body))
  });
  assert.equal(response.status,200);
@@ -74,7 +78,7 @@ test('F06 HTTP E2E F00: Meta webhook -> cobrar -> 1000 -> pay/request -> mock ch
  const store=fixtureStore(),msg=messages(),accounts=createAccountService({filePath:null});
  const webhook=createWebhook({store,messenger:msg.api,accounts,
   baseUrl:'https://pagos.kashbit.bond',log:{log(){},error(e){throw Error(e);}}});
- const waba=await serve(createWebhookApp({onWebhook:webhook.handleWebhook,verifyToken:'f06-verify',
+ const waba=await serve(createWebhookApp({onWebhook:webhook.handleWebhook,verifyToken:'f06-verify',appSecret:F09_SECRET,
   logger:{log(){},error(e){throw Error(e);}}}));
  const appRouter=createAccountRouter({
   service:accounts,vault:createVault({filePath:null}),
@@ -159,7 +163,7 @@ test('F06 HTTP E2E F01-F05: menu -> request -> login -> saved card/NIP -> provid
  providerCalls.length=0;
  const webhook=createWebhook({store,messenger:msg.api,accounts,
   baseUrl:'https://pagos.kashbit.bond',log:{log(){},error(e){throw Error(e);}}});
- const waba=await serve(createWebhookApp({onWebhook:webhook.handleWebhook,verifyToken:'f06-verify',
+ const waba=await serve(createWebhookApp({onWebhook:webhook.handleWebhook,verifyToken:'f06-verify',appSecret:F09_SECRET,
   logger:{log(){},error(e){throw Error(e);}}}));
  const router=createAccountRouter({service:accounts,vault,requestStore:store,
   notifier:msg.api.sendMessage,journal,savedCardEnabled:true});
@@ -171,11 +175,13 @@ test('F06 HTTP E2E F01-F05: menu -> request -> login -> saved card/NIP -> provid
   await until(()=>msg.sent.length===1);
   assert.equal(msg.sent[0].sections[0].rows.length,8);
   // Exercise the same interactive reply used by WhatsApp Cloud API.
-  const selected={entry:[{changes:[{value:{messages:[{
+  const selected={object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{
    from:COLLECTOR,type:'interactive',interactive:{list_reply:{id:'menu:charge'}}
   }]}}]}]};
   let response=await fetchLocal(waba.base,'/webhook',{method:'POST',
-   headers:{'Content-Type':'application/json'},body:JSON.stringify(selected)});
+   headers:{'Content-Type':'application/json',
+    'X-Hub-Signature-256':signedHeader(JSON.stringify(selected))},
+   body:JSON.stringify(selected)});
   assert.equal(response.status,200);
   await until(()=>msg.sent.length===2);
   assert.match(msg.sent[1].body,/¿Cuánto quieres cobrar/);

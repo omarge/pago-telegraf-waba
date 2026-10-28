@@ -31,7 +31,8 @@ function assessUat({
 function run({env=process.env,log=console}={}){
  const result=assessUat({
   env,metaNameStatus:'NOT_CHECKED',
-  // Current public WABA webhook acknowledges before verifying HMAC.
+  // Source candidate F09 enforces HMAC, but no UAT deployment has been
+  // authorized or independently verified with a Meta App Secret.
   incomingWebhookSignatureEnforced:false,
   // src/store.js still keeps payment requests in an in-memory Map.
   paymentRequestsDurable:false,
