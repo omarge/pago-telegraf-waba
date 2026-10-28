@@ -182,7 +182,7 @@ pgTest('R7 SQL failure rolls back routing decision and retry succeeds',async()=>
  assert.equal((await router.stageNext({messageId:id})).routeCode,'MENU_CANDIDATE');
 });
 pgTest('R7 database unavailable and invalid selectors fail closed with no error disclosure',async()=>{
- assert.equal((await router.stageNext({messageId:'wrong'})).state,'INVALID');
+ assert.equal((await router.stageNext({messageId:'../../invalid'})).state,'INVALID');
  const disconnected=createPgRoutingGate({
   pool:{connect:async()=>{throw Error('PRIVATE_HOST_OR_PASSWORD');}},encryptionKey:KEY
  });
