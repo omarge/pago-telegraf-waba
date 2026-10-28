@@ -26,7 +26,7 @@ function cookieToken(req){
  const found=header.split(';').map(x=>x.trim()).find(x=>x.startsWith(COOKIE+'='));
  return found?found.slice(COOKIE.length+1):null;
 }
-function createAccountRouter({service=accountService}={}){
+function createAccountRouter({service=accountService,vault}={}){
  const router=express.Router();
  router.use(express.urlencoded({extended:false,limit:'8kb'}));
  router.use((_req,res,next)=>{res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');next();});
@@ -116,7 +116,7 @@ function createAccountRouter({service=accountService}={}){
   res.clearCookie(COOKIE,{httpOnly:true,secure:true,sameSite:'lax',path:'/pay/app'});
   return res.redirect(303,'/pay/app/login');
  });
- const cardApp=createCardRoutes({accounts:service});
+ const cardApp=createCardRoutes({accounts:service,vault});
  router.use('/api/cards',requireSession,cardApp.api);
  router.get('/assets/enroll.js',requireSession,cardApp.enrollScript);
  router.get('/cards',requireSession,cardApp.cards);
