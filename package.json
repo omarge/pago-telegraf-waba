@@ -1,0 +1,13 @@
+{
+  "name": "pago-telegraf-waba",
+  "version": "1.0.0",
+  "description": "KashBitPay WhatsApp Business API bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "dotenv": "^16.4.5"
+  }
+}
