@@ -82,7 +82,7 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
   const result=service.login(req.body?.email,req.body?.password);
   if(!result)return res.status(401).type('html').send(authForm('login','Credenciales incorrectas',req.body?.next));
   setSessionCookie(res,result.token);
-  return res.redirect(303,'/pay/app/account');
+  return res.redirect(303,safeReturnPath(req.body?.next)||'/pay/app/account');
  });
  router.get('/api/session',requireSession,(req,res)=>{
   const {accountId,email,whatsappLinked}=req.account;
