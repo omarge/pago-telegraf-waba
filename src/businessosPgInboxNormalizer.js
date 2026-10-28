@@ -12,7 +12,10 @@ function createPgInboxNormalizer({pool,encryptionKey}={}){
   if(envelopeDigest!==null&&
      (typeof envelopeDigest!=='string'||!/^[a-f0-9]{64}$/.test(envelopeDigest)))
    return {state:'INVALID'};
-  const c=await pool.connect();
+  // A database outage before BEGIN must not escape with a raw driver error.
+  let c;
+  try{c=await pool.connect();}
+  catch(_error){return {state:'RETRYABLE_NO_EFFECT'};}
   let active=false;
   try{
    await c.query('BEGIN');active=true;

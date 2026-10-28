@@ -122,3 +122,11 @@ pgTest('R6 wrong digest selector and invalid decryption key fail closed',async()
  assert.equal((await worker.processNext({envelopeDigest:'forged'})).state,'INVALID');
  assert.throws(()=>createPgInboxNormalizer({pool,encryptionKey:Buffer.alloc(10)}),/R6_CONFIG_INVALID/);
 });
+
+pgTest('R6 database connect outage returns retryable without exposing driver errors',async()=>{
+ const disconnected=createPgInboxNormalizer({
+  pool:{connect:async()=>{throw Error('PASSWORD_AND_HOST_MUST_NOT_LEAK');}},
+  encryptionKey:KEY
+ });
+ assert.deepEqual(await disconnected.processNext(),{state:'RETRYABLE_NO_EFFECT'});
+});
