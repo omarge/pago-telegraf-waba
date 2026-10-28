@@ -118,7 +118,7 @@ test('BusinessOS R1 deny, declined and conflict remain distinct, with no cross-t
  }
 });
 test('BusinessOS R1 channel flow double-click/fake transport concurrency calls upstream exactly once',async()=>{
- const state={id:REQUEST,amount:1001,state:'PENDING'};
+ const state={id:REQUEST,amount:1001,state:'PENDING',payerAccountId:authority.accountId};
  let release,notify,count=0;
  const wait=new Promise(resolve=>{notify=resolve;});
  const gateway=createBusinessosAuthorizationAdapter({enabled:true,transport:async()=>{
@@ -143,7 +143,7 @@ test('BusinessOS R1 channel flow denies absent confirmation, unrelated account, 
  let called=0;
  const gateway=createBusinessosAuthorizationAdapter({enabled:true,
   transport:async()=>{called++;return approvedResult;}});
- const r={id:REQUEST,amount:1001,state:'PENDING'};
+ const r={id:REQUEST,amount:1001,state:'PENDING',payerAccountId:authority.accountId};
  const flow=createBusinessosChannelFlow({
   enabled:true,requestStore:{getRequest:()=>r},
   resolveTrustedAuthority:async()=>authority,adapter:gateway
