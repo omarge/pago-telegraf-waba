@@ -29,6 +29,9 @@ function cookieToken(req){
  const found=header.split(';').map(x=>x.trim()).find(x=>x.startsWith(COOKIE+'='));
  return found?found.slice(COOKIE.length+1):null;
 }
+function safeReturnPath(value){
+ return typeof value==='string'&&/^\/pay\/app\/pay\/KPR-[0-9A-F]{32}$/.test(value)?value:null;
+}
 function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1'}={}){
  const router=express.Router();
  router.use(express.urlencoded({extended:false,limit:'8kb'}));
@@ -36,7 +39,10 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
  function session(req){return service.getSession(cookieToken(req));}
  function requireSession(req,res,next){
   const data=session(req);
-  if(!data)return res.redirect(303,'/pay/app/login');
+  if(!data){
+   const returnTo=safeReturnPath(req.originalUrl);
+   return res.redirect(303,'/pay/app/login'+(returnTo?'?next='+encodeURIComponent(returnTo):''));
+  }
   req.account=data;
   req.sessionToken=cookieToken(req);
   next();
@@ -44,36 +50,37 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
  function setSessionCookie(res,token){
   res.cookie(COOKIE,token,{httpOnly:true,secure:true,sameSite:'lax',path:'/pay/app',maxAge:MAX_AGE});
  }
- function authForm(kind,error=''){
+ function authForm(kind,error='',returnTo=null){
   const register=kind==='register',title=register?'Crear cuenta':'Ingresar';
   return layout(title,'<h1>'+title+'</h1><p>Cuenta KashBitPay para microaplicaciones.</p>'+
    (error?'<p class="error">'+escapeHtml(error)+'</p>':'')+
    '<form method="post" action="/pay/app/'+kind+'">'+
+   (safeReturnPath(returnTo)?'<input type="hidden" name="next" value="'+escapeHtml(returnTo)+'">':'')+
    '<label>Correo<input type="email" name="email" maxlength="254" autocomplete="username" required></label>'+
    '<label>Contraseña<input type="password" name="password" minlength="12" maxlength="256" autocomplete="'+
    (register?'new-password':'current-password')+'" required></label>'+
    '<button type="submit">'+title+'</button></form>'+
-   '<a href="/pay/app/'+(register?'login':'register')+'">'+
+   '<a href="/pay/app/'+(register?'login':'register')+(safeReturnPath(returnTo)?'?next='+encodeURIComponent(returnTo):'')+'">'+
    (register?'Ya tengo cuenta':'Crear cuenta nueva')+'</a>');
  }
  router.get('/login',(req,res)=>{
   if(session(req))return res.redirect(303,'/pay/app');
-  res.type('html').send(authForm('login'));
+  res.type('html').send(authForm('login','',req.query.next));
  });
  router.get('/register',(req,res)=>{
   if(session(req))return res.redirect(303,'/pay/app');
-  res.type('html').send(authForm('register'));
+  res.type('html').send(authForm('register','',req.query.next));
  });
  router.post('/register',(req,res)=>{
   try{
    const {token}=service.register(req.body?.email,req.body?.password);
    setSessionCookie(res,token);
-   return res.redirect(303,'/pay/app/account');
-  }catch(error){return res.status(400).type('html').send(authForm('register',error.message));}
+   return res.redirect(303,safeReturnPath(req.body?.next)||'/pay/app/account');
+  }catch(error){return res.status(400).type('html').send(authForm('register',error.message,req.body?.next));}
  });
  router.post('/login',(req,res)=>{
   const result=service.login(req.body?.email,req.body?.password);
-  if(!result)return res.status(401).type('html').send(authForm('login','Credenciales incorrectas'));
+  if(!result)return res.status(401).type('html').send(authForm('login','Credenciales incorrectas',req.body?.next));
   setSessionCookie(res,result.token);
   return res.redirect(303,'/pay/app/account');
  });
