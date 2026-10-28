@@ -194,3 +194,16 @@ test('F03 provider failure identifies only the stage (no token or account leakag
   assert.equal(vault.profile(accountId).cards.length,0);
  }finally{await new Promise(ok=>server.close(ok));}
 });
+
+test('F03: empty device session is rejected before any Openpay customer request with a safe stage',async()=>{
+ let requests=0;
+ const provider={merchantId:'merchant1234',publicKey:'pk_fake',async createCustomer(){requests++;return {id:'customer12345678'};}};
+ const vault=createVault({filePath:null,provider,pepper});
+ const params={tokenId:'token_f03_abcdef01234567',deviceSessionId:'',
+  firstName:'Test',lastName:'Person',email:'test@example.com',consent:true};
+ await assert.rejects(vault.enroll('account-f03-123456',params),e=>e.enrollmentStage==='VALIDATE_DEVICE');
+ assert.equal(requests,0);
+ await assert.rejects(vault.enroll('account-f03-123456',{...params,deviceSessionId:'device_test_123456',tokenId:''}),
+  e=>e.enrollmentStage==='VALIDATE_TOKEN');
+ assert.equal(requests,0);
+});

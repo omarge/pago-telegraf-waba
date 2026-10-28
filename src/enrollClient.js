@@ -6,6 +6,7 @@
  const value=id=>document.getElementById(id).value;
  const clear=()=>{document.getElementById('pan').value='';document.getElementById('cvv').value='';};
  const say=text=>{status.textContent=text;};
+ let deviceSessionId='';
  const safeCode=error=>{
   const code=error?.data?.error_code ?? error?.error_code;
   const text=String(code??'');
@@ -21,8 +22,12 @@
   OpenPay.setId(root.dataset.merchant);
   OpenPay.setApiKey(root.dataset.publicKey);
   OpenPay.setSandboxMode(true);
-  const device=OpenPay.deviceData.setup('enroll-card','device-id');
-  if(!device)throw Error('No se generó device_session_id');
+  // Openpay.js returns the session ID and may also add its own hidden input.
+  // Never read a separately pre-created empty field for an AJAX request.
+  const device=OpenPay.deviceData.setup('enroll-card','openpay-device-session');
+  if(typeof device!=='string'||!/^[A-Za-z0-9_-]{8,255}$/.test(device))
+   throw Error('No se generó device_session_id válido');
+  deviceSessionId=device;
   button.disabled=false;
   say('Listo para una tarjeta de prueba.');
  }catch(e){say(e.message);}
@@ -48,7 +53,7 @@
       method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':root.dataset.csrf},
       body:JSON.stringify({
-       ...profile,tokenId,deviceSessionId:value('device-id'),
+       ...profile,tokenId,deviceSessionId,
        consent:document.getElementById('consent').checked
       })
      });
@@ -56,7 +61,10 @@
       const result=await resp.json().catch(()=>null);
       const stages={CREATE_CUSTOMER:'CREATE_CUSTOMER',STORE_CUSTOMER:'STORE_CUSTOMER',
        CREATE_CARD:'CREATE_CARD',GET_CARD:'GET_CARD',VERIFY_CARD:'VERIFY_CARD',
-       STORE_CARD:'STORE_CARD',VALIDATION:'VALIDATION'};
+       STORE_CARD:'STORE_CARD',VALIDATION:'VALIDATION',
+       VALIDATE_CONSENT:'VALIDATE_CONSENT',VALIDATE_TOKEN:'VALIDATE_TOKEN',
+       VALIDATE_DEVICE:'VALIDATE_DEVICE',VALIDATE_NAME:'VALIDATE_NAME',
+       VALIDATE_EMAIL:'VALIDATE_EMAIL',VALIDATE_LIMIT:'VALIDATE_LIMIT'};
       const stage=stages[result?.stage]||'UNKNOWN';
       const code=/^[0-9]{3,6}$/.test(String(result?.openpayCode??''))?result.openpayCode:null;
       const http=Number.isInteger(result?.openpayHttpStatus)&&result.openpayHttpStatus>=400&&result.openpayHttpStatus<=599?result.openpayHttpStatus:null;

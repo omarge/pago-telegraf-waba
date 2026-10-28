@@ -2,11 +2,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
 const path=require('node:path'),vm=require('node:vm');
 const code=fs.readFileSync(path.join(__dirname,'../src/enrollClient.js'),'utf8');
-function runBrowser(onCreate) {
+function runBrowser(onCreate,{fetchRequest=async()=>{throw Error('Unexpected backend request');}}={}) {
  const values={
   first:'Prueba',last:'Sandbox',holder:'Persona Prueba',
   pan:'4111 1111-1111 1111',month:' 12 ',year:' 29 ',
-  cvv:' 123 ',consent:'',submit:'',status:'', 'device-id':'device_test_123456',
+  cvv:' 123 ',consent:'',submit:'',status:'', 'device-id':'',
   'enroll-card':''
  };
  let onSubmit;
@@ -23,7 +23,7 @@ function runBrowser(onCreate) {
  const context={document:{
   querySelector(){return root;},
   getElementById(id){return elements[id];}
- },window:{OpenPay:openpay},OpenPay:openpay,fetch:async()=>{throw Error('No backend requests on token rejection');}};
+ },window:{OpenPay:openpay},OpenPay:openpay,fetch:fetchRequest};
  vm.runInNewContext(code,context);
  assert.equal(elements.submit.disabled,false);
  onSubmit({preventDefault(){}});
@@ -58,4 +58,22 @@ test('F03: unknown Openpay failure does not disclose arbitrary response body',()
  }));
  assert.match(elements.status.textContent,/Tokenización rechazada por Openpay/);
  assert.doesNotMatch(elements.status.textContent,/invalid-secret-text|Sensitive info/);
+});
+
+test('F03 Openpay.js: AJAX sends returned device session ID even when existing hidden field is empty',async()=>{
+ const submissions=[];
+ const elements=runBrowser((_cardDetails,success)=>{
+  success({data:{id:'token_f03_abcdef01234567'}});
+ },{fetchRequest:async(url,options)=>{
+  assert.equal(url,'/pay/app/api/cards/enroll');
+  submissions.push(JSON.parse(options.body));
+  return {ok:true,json:async()=>({id:'card_test_12345678',brand:'visa',last4:'1111'})};
+ }});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(submissions.length,1);
+ assert.equal(submissions[0].deviceSessionId,'device_test_123456');
+ assert.equal(submissions[0].tokenId,'token_f03_abcdef01234567');
+ assert.equal(submissions[0].consent,true);
+ assert.match(elements.status.textContent,/Tarjeta registrada/);
+ assert.doesNotMatch(elements.status.textContent,/token_f03_|device_test_/);
 });
