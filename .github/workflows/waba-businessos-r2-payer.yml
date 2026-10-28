@@ -1,0 +1,37 @@
+name: WABA BusinessOS R2 Trusted Payer HTTP (offline)
+on:
+  push:
+    branches:
+      - feature/waba-businessos-trusted-payer-boundary-r2-20261028
+  pull_request:
+    paths:
+      - 'src/businessosChannelFlow.js'
+      - 'src/businessosWebRoutes.js'
+      - 'src/accountRoutes.js'
+      - 'tests/businessos-r2-authenticated-web.test.js'
+      - 'tests/businessos-authorization-contract.test.js'
+      - '.github/workflows/waba-businessos-r2-payer.yml'
+permissions:
+  contents: read
+jobs:
+  r2-trusted-payer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install offline deps
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: R2 signed boundary and full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+          WABA_TOKEN: ''
+          OPENPAY_PRIVATE_KEY: ''
+        run: |
+          node --check src/businessosChannelFlow.js
+          node --check src/businessosWebRoutes.js
+          node --check src/accountRoutes.js
+          node --test tests/*.test.js

@@ -15,8 +15,13 @@ function createBusinessosChannelFlow({enabled=false,requestStore,
   if(consent!==true||csrfVerified!==true)return {state:'INVALID_CONFIRMATION'};
   const request=requestStore.getRequest(requestId);
   if(!request||request.id!==requestId)return {state:'NOT_FOUND'};
+  // Trust only a server-established payer binding. The invite URL creates
+  // unbound requests; it must NOT be used as authorization to spend money.
+  if(typeof accountId!=='string'||!accountId||
+     request.payerAccountId!==accountId)return {state:'NOT_FOUND'};
   if(request.state!=='PENDING')return {state:'NOT_PENDING'};
   if(attempts.has(requestId))return attempts.get(requestId);
+  const initialAmount=request.amount;
   // Single process guard to avoid duplicate outbound POST from double clicks.
   // This is NOT durable; BusinessOS owns the cross-process idempotency.
   const task=(async()=>{
@@ -24,14 +29,20 @@ function createBusinessosChannelFlow({enabled=false,requestStore,
    try{authority=await resolveTrustedAuthority({accountId,requestId});}
    catch(_error){return {state:'INVALID_TRUSTED_MAPPING'};}
    if(!authority||authority.accountId!==accountId)return {state:'INVALID_TRUSTED_MAPPING'};
-   const payment={id:request.id,amount:request.amount,state:request.state,
+   // Recheck after awaiting the trusted mapper: payment ownership, amount,
+   // and state might have been changed while authority was resolved.
+   const current=requestStore.getRequest(requestId);
+   if(current!==request||current.payerAccountId!==accountId||
+      current.state!=='PENDING'||current.amount!==initialAmount)
+    return {state:'REQUEST_CHANGED_NO_EXECUTION'};
+   const payment={id:request.id,amount:initialAmount,state:request.state,
     currency:'MXN',accountId};
    // No direct Openpay, PAID, F05 journal, WhatsApp or BusinessOS events.
    return adapter.authorize({payment,authority});
   })();
   attempts.set(requestId,task);
   const outcome=await task;
-  if(outcome.state==='INVALID_TRUSTED_MAPPING'||outcome.state==='DISABLED'){
+  if(outcome.state==='INVALID_TRUSTED_MAPPING'||outcome.state==='REQUEST_CHANGED_NO_EXECUTION'||outcome.state==='DISABLED'){
    attempts.delete(requestId);
   }
   return outcome;

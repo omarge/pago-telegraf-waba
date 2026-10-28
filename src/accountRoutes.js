@@ -34,7 +34,7 @@ function cookieToken(req){
 function safeReturnPath(value){
  return typeof value==='string'&&/^\/pay\/app\/pay\/KPR-[0-9A-F]{32}$/.test(value)?value:null;
 }
-function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,journal=statementJournal,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1'}={}){
+function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,journal=statementJournal,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1',businessosFlow=null}={}){
  const router=express.Router();
  router.use(express.urlencoded({extended:false,limit:'8kb'}));
  router.use((_req,res,next)=>{res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');next();});
@@ -132,6 +132,14 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
  const savedPay=createSavedCardRoutes({
   accounts:service,vault:cardApp.vault,requestStore,notifier,journal,enabled:savedCardEnabled
  });
+ // Only an explicitly enabled, injected BusinessOS flow can mount the route.
+ // Default startup has no BusinessOS financial endpoint.
+ if(businessosFlow?.isEnabled===true){
+  const {createBusinessosWebRoutes}=require('./businessosWebRoutes');
+  router.use('/',requireSession,createBusinessosWebRoutes({
+   flow:businessosFlow,requestStore,accounts:service
+  }));
+ }
  router.use('/',requireSession,savedPay.router);
  router.use('/',requireSession,createStatementRoutes({accounts:service,journal}));
  router.use('/api/cards',requireSession,cardApp.api);
