@@ -10,6 +10,7 @@ const PUBLIC_KEY = process.env.OPENPAY_PUBLIC_KEY || '';
 
 function createFormApp({paymentStore=store,accountRouter=createAccountRouter(),
   messenger={sendMessage},charge=openpayCharge,merchant=MERCHANT,privateKey=PRIVATE_KEY,
+  legacyChargeEnabled=false,
   showSavedCardOption=process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' &&
     process.env.WABA_CARD_ENROLL_SANDBOX === '1'}={}) {
   const app = express();
@@ -26,10 +27,13 @@ function createFormApp({paymentStore=store,accountRouter=createAccountRouter(),
     const payment = paymentStore.createRequest(inv.requesterId, 'waba-payer', inv.amount);
     const amountText = (inv.amount / 100).toFixed(2);
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(paymentPage(payment.id, inv.amount, amountText, inv.requesterId, showSavedCardOption));
+    res.send(paymentPage(payment.id, inv.amount, amountText, inv.requesterId, showSavedCardOption, legacyChargeEnabled));
   });
 
   app.post('/pay/charge', async (req, res) => {
+    // UAT safety: legacy token flow accepts caller-provided amount and recipient.
+    // Do not expose it in a public/default app. Explicit enable is test-only.
+    if (legacyChargeEnabled !== true) return res.sendStatus(404);
     const { token_id, amount = 1000, holder, request_id, requester_id } = req.body || {};
     console.log('[charge] token_id=', token_id, 'rid=', request_id);
     if (!token_id || !merchant || !privateKey) {
@@ -108,7 +112,22 @@ function openpayCharge(tokenId, amountCents, holder) {
   });
 }
 
-function paymentPage(requestId, amountCents, amountText, requesterId, showSavedCardOption = process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' && process.env.WABA_CARD_ENROLL_SANDBOX === '1') {
+function paymentPage(requestId, amountCents, amountText, requesterId,
+  showSavedCardOption = process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' &&
+    process.env.WABA_CARD_ENROLL_SANDBOX === '1', legacyChargeEnabled=false) {
+  // The normal UAT page must never offer a new-card form that submits to a
+  // disabled or unbound legacy charge endpoint. Saved-card route stays intact.
+  if (legacyChargeEnabled !== true) {
+    const link=showSavedCardOption?
+      '<a href="/pay/app/pay/'+requestId+'">Pagar con tarjeta guardada</a>':
+      '<p>Pago con tarjeta guardada no habilitado en este entorno.</p>';
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8">'+
+      '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+      '<meta name="referrer" content="no-referrer"><title>KashBitPay Sandbox</title>'+
+      '</head><body><main><h1>Solicitud de pago</h1>'+
+      '<p>Importe: '+String.fromCharCode(36)+amountText+' MXN</p>'+
+      '<p>Solicitud: '+requestId+'</p>'+link+'</main></body></html>';
+  }
   const pk = PUBLIC_KEY || 'pk_test_placeholder';
   const mid = MERCHANT || 'merchant_placeholder';
   return `<!doctype html>
