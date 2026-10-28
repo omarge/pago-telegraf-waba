@@ -68,6 +68,25 @@ function createAccountService({filePath=DEFAULT_FILE,now=()=>Date.now()}={}){
   const expected=Buffer.from(account.digest,'hex');
   return expected.length===actual.length&&crypto.timingSafeEqual(expected,actual);
  }
+ function getPreferences(accountId){
+  const account=accounts.find(a=>a.id===accountId);
+  if(!account)throw Error('Account not found');
+  return {
+   alias:String(account.preferences?.alias||''),
+   whatsappReceipts:account.preferences?.whatsappReceipts!==false
+  };
+ }
+ function setPreferences(accountId,{alias,whatsappReceipts}={}){
+  const account=accounts.find(a=>a.id===accountId);
+  if(!account)throw Error('Account not found');
+  if(typeof alias!=='string'||alias.length>60||/[\x00-\x1F]/.test(alias))
+   throw Error('Invalid account alias');
+  if(typeof whatsappReceipts!=='boolean')throw Error('Invalid WhatsApp preference');
+  const previous=account.preferences;
+  account.preferences={alias:alias.trim(),whatsappReceipts};
+  try{save();}catch(error){account.preferences=previous;throw error;}
+  return getPreferences(accountId);
+ }
  function logout(token){if(typeof token==='string')sessions.delete(sha(token));}
  function validCsrf(token,csrf){
   const session=getSession(token);
@@ -108,7 +127,7 @@ function createAccountService({filePath=DEFAULT_FILE,now=()=>Date.now()}={}){
   const account=accounts.find(a=>a.waId===waId);
   return account?{id:account.id}:null;
  }
- return {register,login,logout,getSession,validCsrf,verifyPassword,beginLink,bindFromWhatsApp,getLinkedAccount,getLinkedWhatsApp};
+ return {register,login,logout,getSession,validCsrf,verifyPassword,getPreferences,setPreferences,beginLink,bindFromWhatsApp,getLinkedAccount,getLinkedWhatsApp};
 }
 const accountService=createAccountService();
 module.exports={createAccountService,accountService,SESSION_MS,LINK_MS};
