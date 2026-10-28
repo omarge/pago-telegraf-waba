@@ -1,0 +1,28 @@
+name: WABA F06 Notification Delivery Evidence (offline)
+on:
+  push:
+    branches:
+      - audit/waba-f06-delivery-evidence-offline-20261028
+  pull_request:
+    paths:
+      - 'src/f06DeliveryEvidence.js'
+      - 'tests/f06-delivery-evidence.test.js'
+      - '.github/workflows/waba-f06-delivery-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  f06-delivery-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install local dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: F06 signed webhook evidence and full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: node --test tests/*.test.js
