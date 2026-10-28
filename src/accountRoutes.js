@@ -34,7 +34,11 @@ function cookieToken(req){
 function safeReturnPath(value){
  return typeof value==='string'&&/^\/pay\/app\/pay\/KPR-[0-9A-F]{32}$/.test(value)?value:null;
 }
-function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,journal=statementJournal,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1',businessosFlow=null}={}){
+function createAccountRouter({service=accountService,vault,requestStore=paymentStore,notifier=sendMessage,journal=statementJournal,savedCardEnabled=process.env.WABA_SAVED_CARD_PAY_SANDBOX==='1',businessosFlow=null,businessosClaims=null}={}){
+ // A claim-bound view is a READ/authorization-only facade. Never share it
+ // with the direct Openpay write path, which expects mutable store objects.
+ if(businessosClaims&&savedCardEnabled)
+  throw Error('BUSINESSOS_R3_DIRECT_PSP_CONFLICT');
  const router=express.Router();
  router.use(express.urlencoded({extended:false,limit:'8kb'}));
  router.use((_req,res,next)=>{res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');next();});
@@ -132,6 +136,13 @@ function createAccountRouter({service=accountService,vault,requestStore=paymentS
  const savedPay=createSavedCardRoutes({
   accounts:service,vault:cardApp.vault,requestStore,notifier,journal,enabled:savedCardEnabled
  });
+ // R3 one-time payer claim is opt-in and never mounts during normal startup.
+ if(businessosFlow?.isEnabled===true&&businessosClaims?.isDurableClaimLedger===true){
+  const {createBusinessosClaimRoutes}=require('./businessosClaimRoutes');
+  router.use('/',requireSession,createBusinessosClaimRoutes({
+   claims:businessosClaims,accounts:service
+  }));
+ }
  // Only an explicitly enabled, injected BusinessOS flow can mount the route.
  // Default startup has no BusinessOS financial endpoint.
  if(businessosFlow?.isEnabled===true){
