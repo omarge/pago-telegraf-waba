@@ -237,6 +237,15 @@ test('R3 HTTP claim requires linked session, CSRF, single-use code and prevents 
   assert.equal(f.getCalls(),1);
  }finally{await s.close();f.l.close();f.f.close();}
 });
+test('R3 refuses mixed PSP write path and claim-bound request facade',()=>{
+ const f=fixture(),l=f.build(),accounts=createAccountService({filePath:null});
+ try{
+  assert.throws(()=>createAccountRouter({
+   service:accounts,requestStore:l,vault:createVault({filePath:null}),
+   businessosClaims:l,savedCardEnabled:true
+  }),/BUSINESSOS_R3_DIRECT_PSP_CONFLICT/);
+ }finally{l.close();f.close();}
+});
 test('R3 opt-in claim route never mounted by default',async()=>{
  const f=fixture(),l=f.build(),accounts=createAccountService({filePath:null});
  const sess=accounts.register('default-r3@example.com','default-pass-r3-1234');
