@@ -1,7 +1,8 @@
 'use strict';
 // F04: single Sandbox happy-path per existing WABA payment request.
 // This does not replace /pay/charge or allow a second attempt after uncertainty.
-function createSavedCardFlow({vault,requestStore,accounts,notify=async()=>{},enabled=false}={}){
+const {statementJournal}=require('./statementJournal');
+function createSavedCardFlow({vault,requestStore,accounts,notify=async()=>{},enabled=false,journal=statementJournal}={}){
  if(!vault||!requestStore||!accounts)throw Error('Saved-card dependencies required');
  function view(accountId,requestId){
   const request=requestStore.getRequest(requestId);
@@ -50,12 +51,26 @@ function createSavedCardFlow({vault,requestStore,accounts,notify=async()=>{},ena
    r.state='UNKNOWN_SAVED_CARD';
    return {state:r.state,chargeId:r.providerChargeId||null};
   }
+  // Provider-completed Sandbox payment becomes a statement entry before PAID.
+  try{
+   journal.recordCompleted({
+    requestId:r.id,chargeId:r.providerChargeId,amountCents:r.amount,
+    payerAccountId:accountId,requesterWaId:r.requesterId
+   });
+  }catch(_error){
+   r.state='UNKNOWN_SAVED_CARD';
+   return {state:r.state,chargeId:r.providerChargeId||null};
+  }
   r.state='PAID';
   const amountText=(r.amount/100).toFixed(2);
   const receipt='✅ Pago completado\nSolicitud: '+r.id+
     '\nImporte: $'+amountText+' MXN\nRastreo: '+r.providerChargeId;
   const payer=accounts.getLinkedWhatsApp(accountId);
-  const recipients=new Set([r.requesterId,payer].filter(Boolean));
+  const canNotify=wa=>{
+   const linked=accounts.getLinkedAccount?.(wa);
+   return !linked||accounts.getPreferences?.(linked.id)?.whatsappReceipts!==false;
+  };
+  const recipients=new Set([r.requesterId,payer].filter(wa=>wa&&canNotify(wa)));
   for(const to of recipients){
    try{await notify(to,receipt);}catch(_error){} // Delivery must not undo PAID.
   }
