@@ -1,0 +1,37 @@
+name: WABA BusinessOS Real Contract Bridge (offline)
+on:
+  push:
+    branches:
+      - feature/waba-businessos-payment-authorization-integration-20261028
+  pull_request:
+    paths:
+      - 'src/businessosAuthorizationAdapter.js'
+      - 'src/businessosAuthorizationTransport.js'
+      - 'src/businessosChannelFlow.js'
+      - 'tests/businessos-authorization-contract.test.js'
+      - 'tests/businessos-authorization-transport.test.js'
+      - '.github/workflows/waba-businessos-payment-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  businessos-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Exact contract adapter and full offline regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+          WABA_TOKEN: ''
+          OPENPAY_PRIVATE_KEY: ''
+        run: |
+          node --check src/businessosAuthorizationAdapter.js
+          node --check src/businessosAuthorizationTransport.js
+          node --check src/businessosChannelFlow.js
+          node --test tests/*.test.js
