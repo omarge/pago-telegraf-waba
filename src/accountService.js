@@ -100,11 +100,15 @@ function createAccountService({filePath=DEFAULT_FILE,now=()=>Date.now()}={}){
   try{save();}catch(error){account.waId=null;throw error;}
   return true;
  }
+ function getLinkedWhatsApp(accountId){
+  const account=accounts.find(a=>a.id===accountId);
+  return account?.waId||null;
+ }
  function getLinkedAccount(waId){
   const account=accounts.find(a=>a.waId===waId);
   return account?{id:account.id}:null;
  }
- return {register,login,logout,getSession,validCsrf,verifyPassword,beginLink,bindFromWhatsApp,getLinkedAccount};
+ return {register,login,logout,getSession,validCsrf,verifyPassword,beginLink,bindFromWhatsApp,getLinkedAccount,getLinkedWhatsApp};
 }
 const accountService=createAccountService();
 module.exports={createAccountService,accountService,SESSION_MS,LINK_MS};
