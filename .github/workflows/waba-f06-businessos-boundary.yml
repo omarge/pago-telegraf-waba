@@ -1,0 +1,28 @@
+name: WABA R6 Happy Path BusinessOS Boundary (offline)
+on:
+  push:
+    branches:
+      - audit/waba-f06-happy-path-businessos-handoff-20261028
+  pull_request:
+    paths:
+      - 'src/businessosPaymentReference.js'
+      - 'tests/f06-businessos-boundary.test.js'
+      - '.github/workflows/waba-f06-businessos-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  happy-path-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Offline happy path and financial-ownership regression
+        env:
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: node --test tests/*.test.js
