@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 8766;
 const VERIFY_TOKEN = process.env.WABA_VERIFY_TOKEN || 'kashbit_verify';
 
 function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,
-  appSecret=process.env.WABA_APP_SECRET,logger=console}={}) {
+  appSecret=process.env.WABA_APP_SECRET,logger=console,durableInbox=null}={}) {
   const app = express();
   app.disable('x-powered-by');
 
@@ -44,6 +44,25 @@ function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,
       catch(_error){return res.sendStatus(400);}
       if(body?.object!=='whatsapp_business_account'||!Array.isArray(body.entry))
         return res.sendStatus(400);
+      // R5 optional durable encrypted inbox. The default server never injects
+      // this: existing F09/F07 behavior stays unchanged. When injected, NO
+      // webhook side effects occur until a separate authorized worker exists.
+      if(durableInbox!==null){
+        if(durableInbox?.isDurableSignedInbox!==true||
+           typeof durableInbox.persistSignedEnvelope!=='function')
+          return res.sendStatus(503);
+        Promise.resolve().then(()=>durableInbox.persistSignedEnvelope({
+          rawBody:bytes,signature:req.get('X-Hub-Signature-256')
+        })).then(outcome=>{
+          if(outcome?.state==='STORED'||outcome?.state==='DUPLICATE')
+            return res.sendStatus(200);
+          if(outcome?.state==='CONFLICT')return res.sendStatus(409);
+          if(outcome?.state==='UNVERIFIED')return res.sendStatus(403);
+          if(outcome?.state==='INVALID')return res.sendStatus(400);
+          return res.sendStatus(503);
+        }).catch(()=>res.sendStatus(503));
+        return;
+      }
       // Still acknowledges before DURABLE processing; not UAT-ready.
       res.sendStatus(200);
       Promise.resolve().then(()=>onWebhook(body)).catch(_error=>{
