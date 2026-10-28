@@ -3,6 +3,9 @@
 // NEVER contacts Graph API, Openpay, BusinessOS, or any live server.
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
+const F09_SECRET='offline-test-meta-app-secret-for-f07-e2e';
+const signedHeader=raw=>('sha256='+crypto.createHmac('sha256',F09_SECRET).update(raw).digest('hex'));
 const {createWebhookApp}=require('../src/index');
 const {createWebhook}=require('../src/webhook');
 const {createFormApp}=require('../src/formServer');
@@ -88,7 +91,7 @@ function fixture(){
  function webhookApp(){
   const hook=createWebhook({accounts,store,messenger,baseUrl:'https://pagos.kashbit.bond',
    log:{log(){},error(e){throw Error(e);}}});
-  return createWebhookApp({verifyToken:'f07-verify',onWebhook:hook.handleWebhook,
+  return createWebhookApp({verifyToken:'f07-verify',appSecret:F09_SECRET,onWebhook:hook.handleWebhook,
    logger:{log(){},error(e){throw Error(e);}}});
  }
  return {accounts,payer,collector,outsider,store,calls,outgoing,provider,
@@ -111,7 +114,9 @@ function inbound(from,message){
 }
 async function receive(s,from,message){
  const resp=await call(s,'/webhook',{method:'POST',
-  headers:{'Content-Type':'application/json'},body:JSON.stringify(inbound(from,message))});
+  headers:{'Content-Type':'application/json',
+   'X-Hub-Signature-256':signedHeader(JSON.stringify(inbound(from,message)))},
+  body:JSON.stringify(inbound(from,message))});
  assert.equal(resp.status,200);
 }
 async function until(predicate){
