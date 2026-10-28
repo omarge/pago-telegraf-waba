@@ -119,6 +119,7 @@ button{margin-top:20px;padding:14px;width:100%;border:0;border-radius:8px;backgr
 <h2>Pago KashBitPay</h2>
 <p>Importe: <strong>$${amountText} MXN</strong></p>
 <p>Solicitud: <code>${requestId}</code></p>
+${process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' && process.env.WABA_CARD_ENROLL_SANDBOX === '1' ? '<p><a href="/pay/app/pay/' + requestId + '">Pagar con tarjeta guardada</a></p>' : ''}
 <p id="status">Cargando…</p>
 <form id="payment" autocomplete="off">
 <label>Titular<input id="holder" required maxlength="80"></label>

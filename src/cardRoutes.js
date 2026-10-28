@@ -88,6 +88,7 @@ function createCardRoutes({accounts,vault=defaultVault}={}){
  });
  return {
   api,
+  vault,
   enrollScript:(_req,res)=>res.type('application/javascript').send(enrollJs),
   cards:(req,res)=>res.type('html').send(cardPage(vault.profile(req.account.accountId))),
   enroll:(req,res)=>res.type('html').send(enrollPage(vault.profile(req.account.accountId),vault.provider,req.account.csrf)),
