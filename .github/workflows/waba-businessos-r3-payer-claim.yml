@@ -1,0 +1,35 @@
+name: WABA BusinessOS R3 Durable Payer Claim Offline
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r3-durable-payer-binding-20261028
+  pull_request:
+    paths:
+      - 'src/businessosPayerClaimLedger.js'
+      - 'src/businessosClaimRoutes.js'
+      - 'src/accountRoutes.js'
+      - 'tests/businessos-r3-durable-claim.test.js'
+      - '.github/workflows/waba-businessos-r3-payer-claim.yml'
+permissions:
+  contents: read
+jobs:
+  r3-payer-claim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install offline dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: R3 payer binding, restart, HMAC, full WABA regression
+        env:
+          OPENPAY_PRIVATE_KEY: ''
+          WABA_TOKEN: ''
+          WABA_SAVED_CARD_PAY_SANDBOX: '0'
+          WABA_CARD_ENROLL_SANDBOX: '0'
+        run: |
+          node --check src/businessosPayerClaimLedger.js
+          node --check src/businessosClaimRoutes.js
+          node --test tests/*.test.js
