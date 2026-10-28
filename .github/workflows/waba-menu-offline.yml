@@ -18,6 +18,7 @@ jobs:
           node --check src/index.js
           node --check src/formServer.js
           node --check src/webhook.js
+          node --check src/waba.js
           node --check src/navigation.js
           node --check src/microapps.js
           node --check src/accountService.js
