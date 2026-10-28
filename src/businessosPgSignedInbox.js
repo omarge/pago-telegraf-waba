@@ -7,12 +7,7 @@ const {verifySignature}=require('./f06DeliveryEvidence');
 const PHONE=/^\d{8,24}$/;
 const META_ID=/^[A-Za-z0-9._:-]{4,255}$/;
 const KINDS=new Set(['sent','delivered','read','failed']);
-function createPgSignedInbox({pool,appSecret,encryptionKey}={}){
- if(!pool||typeof pool.connect!=='function'||
-    typeof appSecret!=='string'||appSecret.length<16||
-    !Buffer.isBuffer(encryptionKey)||encryptionKey.length!==32)
-  throw Error('R5_INBOX_CONFIG');
- function parse(raw){
+function extractEvents(raw){
   let envelope;
   try{envelope=JSON.parse(raw.toString('utf8'));}catch(_e){return null;}
   if(envelope?.object!=='whatsapp_business_account'||!Array.isArray(envelope.entry)||
@@ -43,11 +38,17 @@ function createPgSignedInbox({pool,appSecret,encryptionKey}={}){
   }
   return events;
  }
+function createPgSignedInbox({pool,appSecret,encryptionKey}={}){
+ if(!pool||typeof pool.connect!=='function'||
+    typeof appSecret!=='string'||appSecret.length<16||
+    !Buffer.isBuffer(encryptionKey)||encryptionKey.length!==32)
+  throw Error('R5_INBOX_CONFIG');
+
  async function persistSignedEnvelope({rawBody,signature}={}){
   const raw=Buffer.isBuffer(rawBody)?rawBody:null;
   if(!raw||raw.length===0||raw.length>65536)return {state:'INVALID'};
   if(!verifySignature(raw,signature,appSecret))return {state:'UNVERIFIED'};
-  const events=parse(raw);
+  const events=extractEvents(raw);
   if(!events)return {state:'INVALID'};
   const sha=crypto.createHash('sha256').update(raw).digest('hex');
   const nonce=crypto.randomBytes(12);
@@ -91,4 +92,4 @@ function createPgSignedInbox({pool,appSecret,encryptionKey}={}){
  return Object.freeze({persistSignedEnvelope,isDurableSignedInbox:true,
   isProcessingEnabled:false});
 }
-module.exports={createPgSignedInbox};
+module.exports={createPgSignedInbox,extractEvents};
