@@ -67,7 +67,7 @@ test('F06 failed callback marks failure without leaking title/details and never 
  const a=audit();accepted(a,'PAYER',payerId,payer);
  const to=normalizeRecipient(payer);
  ingest(a,[status(payerId,'sent',to)]);
- assert.equal(ingest(a,[status(payerId,'failed',to,'1780000002',131047)].updated,1);
+ assert.equal(ingest(a,[status(payerId,'failed',to,'1780000002',131047)]).updated,1);
  assert.equal(a.summary().states.failed,1);
  assert.equal(ingest(a,[status(payerId,'delivered',to)]).conflict,1);
  assert.equal(a.summary().evidenceBilateralDelivered,false);
