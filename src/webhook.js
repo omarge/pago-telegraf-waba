@@ -2,12 +2,24 @@
 const liveMessenger=require('./waba');
 const liveStore=require('./store');
 const nav=require('./navigation');
-function createWebhook({messenger=liveMessenger,store=liveStore,log=console,baseUrl}={}){
+const {accountService}=require('./accountService');
+function createWebhook({messenger=liveMessenger,store=liveStore,log=console,baseUrl,accounts=accountService}={}){
  async function handleMessage(msg,contact){
   if(!msg?.from)return;
   const from=msg.from,name=contact?.profile?.name||from;
   log.log('Message from',from,name,'type:',msg.type);
   const text=msg.type==='text'?String(msg.text?.body||'').trim().toLowerCase():'';
+  // Bind messages must not be written into message logs.
+  if(msg.type==='text' && /^vincular(?:\s|$)/i.test(text)){
+   const code=text.slice('vincular'.length).trim().toUpperCase();
+   let linked=false;
+   try{linked=accounts.bindFromWhatsApp(from,code);}
+   catch(_e){log.error('WhatsApp account linking failed');}
+   await messenger.sendMessage(from,linked?
+    '✅ Tu WhatsApp quedó vinculado a tu cuenta KashBitPay.':
+    'No fue posible vincular la cuenta. Genera un nuevo código en tu microaplicación.');
+   return;
+  }
   if(msg.type==='text')log.log('text:',JSON.stringify(text));
   async function askAmount(){
    log.log('asking amount');
