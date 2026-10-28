@@ -3,38 +3,47 @@ const express = require('express');
 const { handleWebhook } = require('./webhook');
 const { startFormServer } = require('./formServer');
 
-const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 8766;
 const VERIFY_TOKEN = process.env.WABA_VERIFY_TOKEN || 'kashbit_verify';
 
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('Webhook verified');
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
-});
+function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,logger=console}={}) {
+  const app = express();
+  app.use(express.json());
 
-app.post('/webhook', async (req, res) => {
-  res.sendStatus(200);
-  try {
-    await handleWebhook(req.body);
-  } catch (e) {
-    console.error('Webhook error:', e.message);
-  }
-});
+  app.get('/webhook', (req, res) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+    if (mode === 'subscribe' && token === verifyToken) {
+      logger.log('Webhook verified');
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  });
 
-app.get('/healthz', (_req, res) => res.send('ok'));
+  app.post('/webhook', async (req, res) => {
+    res.sendStatus(200);
+    try {
+      await onWebhook(req.body);
+    } catch (e) {
+      logger.error('Webhook error:', e.message);
+    }
+  });
 
-app.listen(PORT, () => {
-  console.log(`WABA webhook listening on ${PORT}`);
-});
+  app.get('/healthz', (_req, res) => res.send('ok'));
+  return app;
+}
 
-const FORM_PORT = process.env.FORM_PORT || 8765;
-startFormServer(FORM_PORT);
+function startWabaServer() {
+  const app = createWebhookApp();
+  app.listen(PORT, () => {
+    console.log(`WABA webhook listening on ${PORT}`);
+  });
+  const FORM_PORT = process.env.FORM_PORT || 8765;
+  startFormServer(FORM_PORT);
+}
+
+if (require.main === module) startWabaServer();
+
+module.exports = {createWebhookApp,startWabaServer};
