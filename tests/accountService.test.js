@@ -113,7 +113,7 @@ test('HTTP microapps require login; session, CSRF, logout, bind flow work',async
   assert.equal((await r.json()).whatsappLinked,false);
   r=await request('/pay/app/cards',{headers:{cookie}});
   assert.equal(r.status,200);
-  assert.match(await r.text(),/Módulo en preparación/);
+  assert.match(await r.text(),/No tienes tarjetas guardadas/);
   const session=service.getSession(cookie.split('=')[1]);
   r=await request('/pay/app/bind',{method:'POST',headers:{cookie},
    body:new URLSearchParams({_csrf:'invalid'})});
