@@ -1,0 +1,49 @@
+name: WABA BusinessOS R4 PostgreSQL Channel Gates
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r4-postgres-channel-gates-20261028
+  pull_request:
+    paths:
+      - 'src/businessosPgChannelStore.js'
+      - 'db/waba-r4-channel.sql'
+      - 'tests/businessos-r4-postgres.test.js'
+      - '.github/workflows/waba-businessos-r4-pg.yml'
+      - 'package.json'
+permissions:
+  contents: read
+jobs:
+  postgres-r4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_r4
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_r4_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U waba_r4 -d waba_r4_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_r4:offline_test_only@127.0.0.1:5432/waba_r4_test
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies (no external PSP)
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: R4 actual PostgreSQL + WABA full regression
+        run: |
+          node --check src/businessosPgChannelStore.js
+          node --test tests/*.test.js
