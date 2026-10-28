@@ -1,7 +1,7 @@
 name: WABA menu offline
 on:
   push:
-    branches: [main, feature/waba-menu-microapps-f01]
+    branches: [main, feature/waba-menu-microapps-f01, feature/waba-account-session-f02]
   pull_request:
 permissions:
   contents: read
@@ -20,5 +20,9 @@ jobs:
           node --check src/webhook.js
           node --check src/navigation.js
           node --check src/microapps.js
+          node --check src/accountService.js
+          node --check src/accountRoutes.js
+      - name: Install Express for HTTP integration tests
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Offline regression
         run: node --test tests/*.test.js
