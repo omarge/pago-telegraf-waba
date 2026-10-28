@@ -1,7 +1,7 @@
 name: WABA menu offline
 on:
   push:
-    branches: [main, feature/waba-menu-microapps-f01, feature/waba-account-session-f02, feature/waba-cards-pin-f03, feature/waba-saved-card-happy-path-f04]
+    branches: [main, feature/waba-menu-microapps-f01, feature/waba-account-session-f02, feature/waba-cards-pin-f03, feature/waba-saved-card-happy-path-f04, feature/waba-statement-settings-f05]
   pull_request:
 permissions:
   contents: read
@@ -29,6 +29,8 @@ jobs:
           node --check src/savedCardFlow.js
           node --check src/savedCardRoutes.js
           node --check src/savedPayClient.js
+          node --check src/statementJournal.js
+          node --check src/statementRoutes.js
       - name: Install Express for HTTP integration tests
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Offline regression

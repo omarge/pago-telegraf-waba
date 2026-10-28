@@ -4,6 +4,7 @@ const express=require('express');
 const {createVault}=require('../src/cardVault');
 const {createAccountService}=require('../src/accountService');
 const {createSavedCardFlow}=require('../src/savedCardFlow');
+const {createStatementJournal}=require('../src/statementJournal');
 const {createAccountRouter}=require('../src/accountRoutes');
 
 const PIN_PEPPER='offline-only-strong-pin-pepper-value-over-32';
@@ -37,6 +38,7 @@ function makeFixture(){
  const request={id:REQUEST_ID,requesterId:'5215555550002',payerId:'waba-payer',
   amount:1000,state:'PENDING',created:Date.now()};
  const requestStore={getRequest:id=>id===REQUEST_ID?request:null};
+ const journal=createStatementJournal({filePath:null});
  const messages=[];
  const notify=async(to,msg)=>{messages.push([to,msg]);};
  async function setup(){
@@ -49,12 +51,12 @@ function makeFixture(){
   calls.length=0;
   return card;
  }
- return {calls,provider,accounts,web,accountId,vault,requestStore,request,messages,notify,setup};
+ return {calls,provider,accounts,web,accountId,vault,requestStore,request,messages,notify,setup,journal};
 }
 test('saved-card happy path: select, PIN, explicit consent, one charge, verified GET, two notices',async()=>{
  const f=makeFixture();
  const card=await f.setup();
- const flow=createSavedCardFlow({
+ const flow=createSavedCardFlow({journal:f.journal,
   vault:f.vault,requestStore:f.requestStore,accounts:f.accounts,
   notify:f.notify,enabled:true
  });
@@ -82,12 +84,12 @@ test('saved-card happy path: select, PIN, explicit consent, one charge, verified
 });
 test('saved-card route is opt-in and cannot charge without final consent',async()=>{
  const f=makeFixture(),card=await f.setup();
- const disabled=createSavedCardFlow({vault:f.vault,requestStore:f.requestStore,accounts:f.accounts});
+ const disabled=createSavedCardFlow({journal:f.journal,vault:f.vault,requestStore:f.requestStore,accounts:f.accounts});
  assert.equal((await disabled.pay({
   accountId:f.accountId,requestId:REQUEST_ID,cardId:card.id,pin:'1234',
   deviceSessionId:'device123456789',consent:true,csrfVerified:true
  })).state,'DISABLED');
- const flow=createSavedCardFlow({vault:f.vault,requestStore:f.requestStore,accounts:f.accounts,enabled:true});
+ const flow=createSavedCardFlow({journal:f.journal,vault:f.vault,requestStore:f.requestStore,accounts:f.accounts,enabled:true});
  assert.equal((await flow.pay({
   accountId:f.accountId,requestId:REQUEST_ID,cardId:card.id,pin:'1234',
   deviceSessionId:'device123456789',consent:false,csrfVerified:true
@@ -98,7 +100,7 @@ test('verified noncompleted Openpay outcome does not say paid or retry',async()=
  const f=makeFixture(),card=await f.setup();
  f.provider.getCharge=async()=>({id:'charge12345678',order_id:REQUEST_ID,
   amount:10,currency:'MXN',status:'in_progress'});
- const flow=createSavedCardFlow({vault:f.vault,requestStore:f.requestStore,accounts:f.accounts,notify:f.notify,enabled:true});
+ const flow=createSavedCardFlow({journal:f.journal,vault:f.vault,requestStore:f.requestStore,accounts:f.accounts,notify:f.notify,enabled:true});
  const result=await flow.pay({
   accountId:f.accountId,requestId:REQUEST_ID,cardId:card.id,pin:'1234',
   deviceSessionId:'device123456789',consent:true,csrfVerified:true
@@ -116,7 +118,7 @@ test('verified noncompleted Openpay outcome does not say paid or retry',async()=
 test('web flow: login continuation, authenticated form, PIN and payment receipt',async()=>{
  const f=makeFixture(),card=await f.setup();
  const app=express();
- app.use('/pay/app',createAccountRouter({
+ app.use('/pay/app',createAccountRouter({journal:f.journal,
   service:f.accounts,vault:f.vault,requestStore:f.requestStore,
   notifier:f.notify,savedCardEnabled:true
  }));
