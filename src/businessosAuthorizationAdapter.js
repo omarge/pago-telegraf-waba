@@ -25,7 +25,9 @@ function buildAuthorizationRequest({payment,authority}={}){
    authority.clientIpAddress.length>45||!/^[0-9a-fA-F:.]+$/.test(authority.clientIpAddress)||
    authority.fraudDecision!=='APPROVE')
   throw Error('BUSINESSOS_AUTHORITY_NOT_VERIFIED');
- if(!required(authority.accountId)||!required(authority.delegatedBearer)||
+ if(!required(authority.accountId)||
+    typeof authority.delegatedBearer!=='string'||
+    !/^[A-Za-z0-9._~+\/=-]{16,4096}$/.test(authority.delegatedBearer)||
     !required(payment.accountId)||authority.accountId!==payment.accountId)
   throw Error('BUSINESSOS_ACCOUNT_SCOPE_MISMATCH');
  const amount=decimalMXN(payment.amount);

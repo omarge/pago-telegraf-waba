@@ -163,3 +163,20 @@ test('BusinessOS R1 opt-in channel flow still avoids any direct Openpay, WhatsAp
  });
  assert.equal((await flow.authorize({})).state,'DISABLED');
 });
+
+test('BusinessOS R1 delegated Security Engine bearer may be >128 chars but never enters payment body',async()=>{
+ const jwt='eyJhbGciOiJSUzI1NiJ9.'+'a'.repeat(440)+'.'+'b'.repeat(440);
+ const trusted={...authority,delegatedBearer:jwt};
+ const payload=buildAuthorizationRequest({payment,authority:trusted});
+ assert.ok(!JSON.stringify(payload).includes(jwt));
+ let seen=0;
+ const adapter=createBusinessosAuthorizationAdapter({enabled:true,transport:async request=>{
+  seen++;
+  assert.equal(request.delegatedBearer,jwt);
+  assert.ok(!JSON.stringify(request.body).includes(jwt));
+  return approvedResult;
+ }});
+ const result=await adapter.authorize({payment,authority:trusted});
+ assert.equal(result.state,'AUTHORIZED_PENDING_CAPTURE');
+ assert.equal(seen,1);
+});
