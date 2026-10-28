@@ -43,11 +43,11 @@ function api(method, path, body, {request=https.request,logger=console}={}) {
         const code = result && result.error && result.error.code;
         logger.log('[waba] response HTTP', res.statusCode, 'code=', code || 'none',
           'in', Date.now() - start, 'ms');
-        if (res.statusCode < 200 || res.statusCode >= 300 || result.error) {
+        if (res.statusCode < 200 || res.statusCode >= 300 || result?.error) {
           return reject(new Error('Meta WhatsApp API HTTP ' + res.statusCode +
             ' code=' + (code || 'unknown')));
         }
-        if (!Array.isArray(result.messages) || !result.messages[0]?.id) {
+        if (!Array.isArray(result?.messages) || !result.messages[0]?.id) {
           return reject(new Error('Meta WhatsApp API did not confirm message acceptance'));
         }
         resolve(result);

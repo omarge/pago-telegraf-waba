@@ -52,3 +52,10 @@ test('Meta accepted outbound message preserves result without secret-bearing log
   request:mock(200,accepted),logger
  }),accepted);
 });
+
+test('Meta null JSON cannot cause an unhandled exception or false delivery',async()=>{
+ await assert.rejects(
+  api('POST','123/messages',{}, {request:mock(200,null),logger}),
+  /did not confirm message acceptance/
+ );
+});
