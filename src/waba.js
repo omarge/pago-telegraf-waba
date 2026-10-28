@@ -14,7 +14,7 @@ function normalizePhone(to) {
   return to;
 }
 
-function api(method, path, body) {
+function api(method, path, body, {request=https.request,logger=console}={}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const opts = {
@@ -28,22 +28,37 @@ function api(method, path, body) {
       timeout: 60000,
     };
     if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
-    console.log('[waba] request', method, path, 'to=', body?.to);
+    logger.log('[waba] request', method, path, 'to=', body?.to);
     const start = Date.now();
-    const req = https.request(opts, (res) => {
+    const req = request(opts, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
-        console.log('[waba] response', res.statusCode, 'in', Date.now() - start, 'ms', d.slice(0, 300));
-        try { resolve(JSON.parse(d)); } catch { resolve(d); }
+        let result;
+        try { result = JSON.parse(d); }
+        catch (_error) {
+          logger.error('[waba] malformed Meta response HTTP', res.statusCode);
+          return reject(new Error('Meta API malformed response HTTP ' + res.statusCode));
+        }
+        const code = result && result.error && result.error.code;
+        logger.log('[waba] response HTTP', res.statusCode, 'code=', code || 'none',
+          'in', Date.now() - start, 'ms');
+        if (res.statusCode < 200 || res.statusCode >= 300 || result?.error) {
+          return reject(new Error('Meta WhatsApp API HTTP ' + res.statusCode +
+            ' code=' + (code || 'unknown')));
+        }
+        if (!Array.isArray(result?.messages) || !result.messages[0]?.id) {
+          return reject(new Error('Meta WhatsApp API did not confirm message acceptance'));
+        }
+        resolve(result);
       });
     });
     req.on('error', (e) => {
-      console.error('[waba] request error:', e.message, 'after', Date.now() - start, 'ms');
+      logger.error('[waba] request error:', e.message, 'after', Date.now() - start, 'ms');
       reject(e);
     });
     req.on('timeout', () => {
-      console.error('[waba] request timeout after', Date.now() - start, 'ms');
+      logger.error('[waba] request timeout after', Date.now() - start, 'ms');
       req.destroy();
       reject(new Error('timeout'));
     });
@@ -100,4 +115,4 @@ async function sendList(to, text, buttonText, sections) {
   });
 }
 
-module.exports = { sendMessage, sendButtons, sendList };
+module.exports = { sendMessage, sendButtons, sendList, api };

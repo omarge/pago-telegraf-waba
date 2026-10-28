@@ -8,37 +8,40 @@ const MERCHANT = process.env.OPENPAY_MERCHANT_ID || '';
 const PRIVATE_KEY = process.env.OPENPAY_PRIVATE_KEY || '';
 const PUBLIC_KEY = process.env.OPENPAY_PUBLIC_KEY || '';
 
-function startFormServer(port = 8765) {
+function createFormApp({paymentStore=store,accountRouter=createAccountRouter(),
+  messenger={sendMessage},charge=openpayCharge,merchant=MERCHANT,privateKey=PRIVATE_KEY,
+  showSavedCardOption=process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' &&
+    process.env.WABA_CARD_ENROLL_SANDBOX === '1'}={}) {
   const app = express();
   app.use(express.json());
 
   // Account microapps remain separate from existing financial endpoints.
-  app.use('/pay/app', createAccountRouter());
+  app.use('/pay/app', accountRouter);
 
   app.get('/pay/request/:token', (req, res) => {
-    const inv = store.consumeInvite(req.params.token);
+    const inv = paymentStore.consumeInvite(req.params.token);
     if (!inv) {
       return res.status(404).send('Enlace inválido o expirado.');
     }
-    const payment = store.createRequest(inv.requesterId, 'waba-payer', inv.amount);
+    const payment = paymentStore.createRequest(inv.requesterId, 'waba-payer', inv.amount);
     const amountText = (inv.amount / 100).toFixed(2);
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(paymentPage(payment.id, inv.amount, amountText, inv.requesterId));
+    res.send(paymentPage(payment.id, inv.amount, amountText, inv.requesterId, showSavedCardOption));
   });
 
   app.post('/pay/charge', async (req, res) => {
     const { token_id, amount = 1000, holder, request_id, requester_id } = req.body || {};
     console.log('[charge] token_id=', token_id, 'rid=', request_id);
-    if (!token_id || !MERCHANT || !PRIVATE_KEY) {
+    if (!token_id || !merchant || !privateKey) {
       return res.status(400).json({ error: 'missing token or openpay config' });
     }
     try {
-      const result = await openpayCharge(token_id, amount, holder);
+      const result = await charge(token_id, amount, holder);
       console.log('[charge] openpay result', result.id, result.status);
       if (request_id && requester_id) {
         const amountText = (amount / 100).toFixed(2);
         const msg = `✅ Pago completado\nSolicitud: ${request_id}\nImporte: $${amountText} MXN\nRastreo: ${result.id}`;
-        try { await sendMessage(requester_id, msg); } catch (_) {}
+        try { await messenger.sendMessage(requester_id, msg); } catch (_) {}
       }
       res.json({ ok: true, charge_id: result.id, status: result.status });
     } catch (e) {
@@ -49,6 +52,11 @@ function startFormServer(port = 8765) {
 
   app.get('/healthz', (_req, res) => res.send('ok'));
 
+  return app;
+}
+
+function startFormServer(port = 8765) {
+  const app = createFormApp();
   app.listen(port, '0.0.0.0', () => {
     console.log(`Form server on ${port}`);
   });
@@ -100,7 +108,7 @@ function openpayCharge(tokenId, amountCents, holder) {
   });
 }
 
-function paymentPage(requestId, amountCents, amountText, requesterId) {
+function paymentPage(requestId, amountCents, amountText, requesterId, showSavedCardOption = process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' && process.env.WABA_CARD_ENROLL_SANDBOX === '1') {
   const pk = PUBLIC_KEY || 'pk_test_placeholder';
   const mid = MERCHANT || 'merchant_placeholder';
   return `<!doctype html>
@@ -119,7 +127,7 @@ button{margin-top:20px;padding:14px;width:100%;border:0;border-radius:8px;backgr
 <h2>Pago KashBitPay</h2>
 <p>Importe: <strong>$${amountText} MXN</strong></p>
 <p>Solicitud: <code>${requestId}</code></p>
-${process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' && process.env.WABA_CARD_ENROLL_SANDBOX === '1' ? '<p><a href="/pay/app/pay/' + requestId + '">Pagar con tarjeta guardada</a></p>' : ''}
+${showSavedCardOption ? '<p><a href="/pay/app/pay/' + requestId + '">Pagar con tarjeta guardada</a></p>' : ''}
 <p id="status">Cargando…</p>
 <form id="payment" autocomplete="off">
 <label>Titular<input id="holder" required maxlength="80"></label>
@@ -176,4 +184,4 @@ form.addEventListener('submit', (e) => {
 </script></main></body></html>`;
 }
 
-module.exports = { startFormServer };
+module.exports = { startFormServer, createFormApp };

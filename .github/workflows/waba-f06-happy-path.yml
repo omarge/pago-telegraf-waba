@@ -1,0 +1,25 @@
+name: WABA F06 HTTP Happy Path
+on:
+  push:
+    branches:
+      - feature/waba-happy-path-e2e-f06
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/waba-f06-happy-path.yml'
+permissions:
+  contents: read
+jobs:
+  http-happy-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Full HTTP Happy Path (local mocks only)
+        run: node --test tests/f06-http-e2e.test.js
