@@ -6,7 +6,7 @@ const { startFormServer } = require('./formServer');
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8766;
 const VERIFY_TOKEN = process.env.WABA_VERIFY_TOKEN || 'kashbit_verify';
 
 app.get('/webhook', (req, res) => {
