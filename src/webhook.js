@@ -49,7 +49,11 @@ function createWebhook({messenger=liveMessenger,store=liveStore,log=console,base
   }
   const state=store.conv.get(from);
   if(msg.type==='text'&&state?.step==='amount'){
-   const amount=parseInt(text,10);
+   const amount=/^[1-9][0-9]*$/.test(text)?Number(text):NaN;
+   if(!Number.isSafeInteger(amount)){
+    await messenger.sendMessage(from,'Monto inválido. Envía un número entero positivo en centavos.');
+    return;
+   }
    if(!amount||amount<=0){
     await messenger.sendMessage(from,'Monto inválido. Envía un número (1000 = $10.00).');
     return;
