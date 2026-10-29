@@ -20,6 +20,9 @@ on:
       - 'db/waba-r11-channel.sql'
       - 'db/waba-r12-*.sql'
       - 'tests/pgMigrations.js'
+      # Package dependency changes can alter every PG18 financial test result.
+      - 'package.json'
+      - 'package-lock.json'
       - 'contracts/businessos/integration/v1/**'
       - '.github/workflows/waba-businessos-r12fg-integration.yml'
 permissions:
