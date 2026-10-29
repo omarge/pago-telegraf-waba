@@ -1,0 +1,47 @@
+name: WABA R12 Kafka Held Record Diagnostics
+on:
+  push:
+    branches:
+      - feature/waba-r12-kafka-hold-diagnostics-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR12*.js'
+      - 'tests/businessos-r12-kafka-hold-diagnostics.test.js'
+      - 'db/waba-r12-*.sql'
+      - '.github/workflows/waba-businessos-r12-hold-diagnostics.yml'
+permissions:
+  contents: read
+jobs:
+  postgres18-full-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: r12hold
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: r12hold_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U r12hold -d r12hold_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://r12hold:offline_test_only@127.0.0.1:5432/r12hold_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check canonical contract, all WABA tests and adversarial PostgreSQL 18
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
+          node --test tests/*.test.js
