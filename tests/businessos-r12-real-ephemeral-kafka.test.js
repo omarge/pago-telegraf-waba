@@ -83,7 +83,8 @@ brokerTest('R12-D real ephemeral Kafka broker + PostgreSQL18: two wire deliverie
  let consumer;
  try{
   await applyTestChannelMigrations(pool,['waba-r4-channel.sql','waba-r11-channel.sql',
-   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql']);
+   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql',
+   'waba-r12-kafka-holds.sql']);
   const requestId='KPR-'+'B'.repeat(32),payer='r12de-payer',key='r12de-offline-key';
   await pool.query('INSERT INTO waba_channel.requests '+
    '(request_id,requester_wa_id,amount_cents,payer_account_id) VALUES($1,$2,$3,$4)',
