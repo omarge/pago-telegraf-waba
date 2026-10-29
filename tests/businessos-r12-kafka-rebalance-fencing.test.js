@@ -36,7 +36,7 @@ function record(n,offset){
  const message=t.create({meta,paymentId:intent,
   amount:{currency:{code:'MXN'},amountDecimal:'10.00'},
   status:'PAYMENT_STATUS_AUTHORIZED'});
- return {offset,key:Buffer.from(TENANT+'|'+intent),
+ return {offset:String(offset),key:Buffer.from(TENANT+'|'+intent),
   value:Buffer.from(t.encode(message).finish()),
   headers:{
    'content-type':Buffer.from('application/x-protobuf'),
