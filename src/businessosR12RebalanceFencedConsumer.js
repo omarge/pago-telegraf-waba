@@ -34,6 +34,12 @@ function createR12RebalanceFencedConsumer({enabled=false,pool,config,kafkaFactor
  async function start(){
   if(enabled!==true)return {state:'DISABLED'};
   if(starting||consumer)return {state:'ALREADY_STARTED'};
+  // Test-only injected transport must NEVER bypass production TLS/SCRAM.
+  // NODE_TEST_CONTEXT is supplied by Node's --test child process. This is
+  // a guardrail, NOT a cryptographic proof of CI or broker identity.
+  if(kafkaFactory!==undefined&&
+     !['child-v8','child-process'].includes(process.env.NODE_TEST_CONTEXT))
+   return {state:'TEST_TRANSPORT_OVERRIDE_REJECTED_NO_CONNECT'};
   if(!validateSecureKafkaConfig(config))
    return {state:'CONFIG_REJECTED_NO_CONNECT'};
   starting=true;
