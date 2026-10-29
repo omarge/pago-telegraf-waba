@@ -14,7 +14,8 @@ function createR11OfflineDrainWorker({pool,encryptionKey,enabled=false}={}){
  async function runOnce({limit=8,envelopeDigest=null}={}){
   if(enabled!==true)return {state:'DISABLED'};
   if(!Number.isInteger(limit)||limit<1||limit>MAX_BATCH||
-     (envelopeDigest!==null&&(!SHA.test(envelopeDigest))))
+     (envelopeDigest!==null&&
+      (typeof envelopeDigest!=='string'||!SHA.test(envelopeDigest))))
    return {state:'INVALID'};
   let selected;
   try{
