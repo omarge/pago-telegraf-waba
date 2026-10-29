@@ -3,14 +3,7 @@ on:
   push:
     branches:
       - feature/waba-businessos-r12-canonical-kafka-wire-preflight-20261028
-  pull_request:
-    paths:
-      - 'contracts/businessos/integration/v1/**'
-      - 'src/businessosR12CanonicalWireGate.js'
-      - 'src/businessosR12CanonicalCaptureInbox.js'
-      - 'db/waba-r12-canonical-channel.sql'
-      - 'tests/businessos-r12-canonical-*.test.js'
-      - '.github/workflows/waba-businessos-r12-canonical-wire.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
