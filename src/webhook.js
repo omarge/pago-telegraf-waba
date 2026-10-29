@@ -58,7 +58,7 @@ function createWebhook({messenger=liveMessenger,store=liveStore,log=console,base
    store.conv.delete(from);
    const base=String(baseUrl||process.env.PUBLIC_BASE_URL||'https://pagos.kashbit.bond').replace(/\/$/,'');
    const url=base+'/pay/request/'+token;
-   log.log('link:',url);
+   log.log('payment request link created');
    await messenger.sendMessage(from,'Enlace generado:\n'+url+'\n\nEnvíaselo al pagador.');
    return;
   }
