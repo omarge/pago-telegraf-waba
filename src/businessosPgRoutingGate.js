@@ -85,8 +85,12 @@ function createPgRoutingGate({pool,encryptionKey}={}){
     [item.phone_number_id,item.message_id,item.event_kind,item.event_digest,
      item.source_envelope_digest,code]);
    await c.query('COMMIT');active=false;
+   // Preserve the original R7 contract for old callers. The new pipeline
+   // explicitly opts into envelope-scoped event identifiers (no recipient PII).
    return result.rowCount===1?{state:'STAGED_NO_EFFECT',routeCode:code,
-    phoneNumberId:item.phone_number_id,messageId:item.message_id,eventKind:item.event_kind}:
+    ...(sourceEnvelopeDigest===null?{}:{
+     phoneNumberId:item.phone_number_id,messageId:item.message_id,
+     eventKind:item.event_kind})}:
     {state:'DUPLICATE_NO_EFFECT'};
   }catch(_e){
    if(active)try{await c.query('ROLLBACK');}catch(_ignored){}
