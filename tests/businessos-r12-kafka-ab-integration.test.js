@@ -27,7 +27,7 @@ function kafka(){
  const state={eachBatch:null,commits:[],resolved:[],config:null,opts:null};
  return {
   state,
-  factory:settings=>{state.config=settings;return {consumer:opts=>{
+  factory:function FakeKafka(settings){state.config=settings;return {consumer:opts=>{
    state.opts=opts;
    return {
     connect:async()=>{},subscribe:async()=>{},
