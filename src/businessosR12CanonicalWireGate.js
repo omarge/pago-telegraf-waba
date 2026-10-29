@@ -85,6 +85,31 @@ function inspectWire({topic,key,headers,value}={}){
     Number.isNaN(Date.parse(meta.occurredAt))||
     !meta.idempotencyKey)
   return {state:'CANONICAL_METADATA_MISMATCH_HOLD'};
+ // R12-C: noncapture events are durable evidence too; do not ACK a
+ // forged "PaymentAuthorized"/"PaymentExecutionUnknown"/"Resolved" fact.
+ // The Payment Engine emitter uses deterministic event IDs for every type.
+ const attemptId=meta.source.aggregateId;
+ const expectedEventId='payment-engine:'+attemptId+':'+type;
+ const resolution=event.resolution;
+ const resolvedSuffix=resolution==='PAYMENT_EXECUTION_RESOLVED_EXECUTED'?
+  ':EXECUTED':resolution==='PAYMENT_EXECUTION_RESOLVED_NOT_EXECUTED'?
+  ':NOT_EXECUTED':null;
+ const exactEventId=type==='PaymentExecutionResolved'?
+  (resolvedSuffix!==null&&meta.eventId===expectedEventId+resolvedSuffix):
+  meta.eventId===expectedEventId;
+ if(!ID.test(meta.tenantId.id)||!ID.test(event.paymentId)||
+    !ID.test(attemptId)||typeof meta.eventId!=='string'||
+    meta.eventId.length>128||!exactEventId||
+    typeof meta.idempotencyKey!=='string'||
+    !ID.test(meta.idempotencyKey)||
+    (type==='PaymentExecutionUnknown'&&
+     (event.paymentAttemptId!==attemptId||
+      !['OUTCOME_STATUS_UNKNOWN','OUTCOME_STATUS_INDETERMINATE_EXECUTION']
+       .includes(event.status)))||
+    (type==='PaymentExecutionResolved'&&event.paymentAttemptId!==attemptId)||
+    (type==='PaymentAuthorized'&&event.status!=='PAYMENT_STATUS_AUTHORIZED')||
+    (type==='PaymentFailed'&&event.status!=='OUTCOME_STATUS_FAILED'))
+  return {state:'CANONICAL_METADATA_MISMATCH_HOLD'};
  if(type!=='PaymentCaptured')
   return Object.freeze({state:'NON_CAPTURE_EVENT_HOLD',eventType:type,
    eventId:meta.eventId,tenantId:meta.tenantId.id,
