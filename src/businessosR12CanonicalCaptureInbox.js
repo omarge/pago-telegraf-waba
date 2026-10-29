@@ -35,7 +35,8 @@ function createR12CanonicalCaptureInbox({enabled=false,pool,wireGate}={}){
    await c.query('BEGIN');active=true;
    const rows=await c.query(
     'SELECT h.request_id,h.tenant_id,h.payer_account_id,h.businessos_intent_id,'+
-    'h.businessos_attempt_id,h.amount_cents,h.currency,h.outcome,'+
+    'h.businessos_attempt_id,h.reserved_businessos_intent_id,'+
+    'h.reserved_businessos_attempt_id,h.amount_cents,h.currency,h.outcome,'+
     'r.state AS request_state,r.amount_cents AS request_amount_cents,'+
     'r.currency AS request_currency,r.payer_account_id AS request_payer '+
     'FROM waba_channel.payment_authorization_handoffs h '+
@@ -54,6 +55,27 @@ function createR12CanonicalCaptureInbox({enabled=false,pool,wireGate}={}){
       Number(h.request_amount_cents)!==candidate.amountCents){
     await c.query('COMMIT');active=false;
     return {state:'IDENTITY_OR_AMOUNT_MISMATCH_HOLD'};
+   }
+   // This inbox is a separate entry point: recheck R20's original
+   // pre-POST reservation under the handoff row lock, not just the later
+   // Kafka lookup. Legacy BOTH-NULL rows remain candidate-only.
+   const legacy=h.reserved_businessos_intent_id===null&&
+    h.reserved_businessos_attempt_id===null;
+   if(!legacy&&(h.reserved_businessos_intent_id!==candidate.paymentIntentId||
+      h.reserved_businessos_attempt_id!==candidate.paymentAttemptId)){
+    await c.query('COMMIT');active=false;
+    return {state:'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD'};
+   }
+   // A direct candidate inbox invocation must not bypass R20's
+   // intent-wide handoff ambiguity check. It is not a financial operation.
+   const bindings=await c.query(
+    'SELECT request_id FROM waba_channel.payment_authorization_handoffs '+
+    'WHERE tenant_id=$1 AND businessos_intent_id=$2 '+
+    "AND outcome='AUTHORIZED_PENDING_CAPTURE' LIMIT 2",
+    [candidate.tenantId,candidate.paymentIntentId]);
+   if(bindings.rowCount!==1||bindings.rows[0].request_id!==requestId){
+    await c.query('COMMIT');active=false;
+    return {state:'AMBIGUOUS_PAYMENT_INTENT_BINDING_HOLD'};
    }
    const insert=await c.query(
     'INSERT INTO waba_channel.canonical_capture_candidates '+
