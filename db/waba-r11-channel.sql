@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS waba_channel.payment_authorization_handoffs (
   CHECK(outcome IN ('UNKNOWN_HOLD','AUTHORIZED_PENDING_CAPTURE','DECLINED','PRE_EXECUTION_FAILED','DENIED')),
  businessos_intent_id text,
  businessos_attempt_id text,
+ reserved_businessos_intent_id text,
+ reserved_businessos_attempt_id text,
  reserved_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  finalized_at timestamptz,
  CHECK(
@@ -22,6 +24,18 @@ CREATE TABLE IF NOT EXISTS waba_channel.payment_authorization_handoffs (
   (outcome<>'UNKNOWN_HOLD' AND finalized_at IS NOT NULL)
  )
 );
+-- Existing channel UAT schemas may predate R20; preserve historic rows.
+-- New R11 reservations commit a deterministic economic binding BEFORE POST.
+ALTER TABLE waba_channel.payment_authorization_handoffs
+ ADD COLUMN IF NOT EXISTS reserved_businessos_intent_id text;
+ALTER TABLE waba_channel.payment_authorization_handoffs
+ ADD COLUMN IF NOT EXISTS reserved_businessos_attempt_id text;
+-- Unique across ALL non-null reservations, including UNKNOWN_HOLD. Do not
+-- release an original PSP attempt simply because its response is unknown.
+CREATE UNIQUE INDEX IF NOT EXISTS r20_handoffs_tenant_reserved_intent_uq
+ ON waba_channel.payment_authorization_handoffs
+ (tenant_id,reserved_businessos_intent_id)
+ WHERE reserved_businessos_intent_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS r11_handoffs_unresolved_idx
  ON waba_channel.payment_authorization_handoffs(reserved_at)
  WHERE outcome='UNKNOWN_HOLD';
