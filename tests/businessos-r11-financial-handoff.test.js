@@ -350,7 +350,7 @@ pgTest('R20-A collision on pre-reserved tenant economic intent prevents a second
   'AUTHORIZED_PENDING_CAPTURE_NOT_PAID');
  assert.equal(first.calls.transport,1);
  const sha=crypto.createHash('sha256')
-  .update('waba-businessos-auth-v1\\n'+TENANT+'\\n'+other).digest('hex');
+  .update('waba-businessos-auth-v1\n'+TENANT+'\n'+other).digest('hex');
  const futureIntent='waba-int-'+sha.slice(0,32);
  const futureAttempt='waba-att-'+sha.slice(0,32);
  // Simulate a bad historic reservation/import that acquired the NEXT
