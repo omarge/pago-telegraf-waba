@@ -1,0 +1,19 @@
+# BusinessOS R10 — Identidad canónica y Fraud, integración offline sin autoridad financiera
+
+## Contratos reales inspeccionados (únicamente lectura)
+- Payment Engine `CustomerVaultCustomer` identifica customer con `CustomerId`, `TenantId`, `PaymentProviderAccountId`, `ProviderCustomerReference` y `CustomerVaultStatus` (`ACTIVE`, `UNKNOWN`, etc.). `PaymentAuthorizationRequest.customerId` requiere identidad **canónica BusinessOS**, nunca ruta Openpay customer ni WABA account.
+- `PaymentMethodReference` define `provider` y `opaqueReference`; el Payment Engine administra el mapeo de CustomerVault y proveedor. NO existe endpoint REST público de CustomerVault probado en el repositorio; **R10 NO inventa ninguno**.
+- Fraud Engine `POST /v1/fraud/assessments` exige header `Idempotency-Key` y cuerpo `paymentId`, `merchantId`, `customerId`, `amount.{value,currency}`, `method.{type,vaultToken,bin,last4}`, `device.{fingerprint,ip}`, `occurredAt`. La identidad de tenant se obtiene de `TenantContext.current()` autenticado, no del cuerpo.
+- Fraud `AssessmentResponse` devuelve `assessmentId` UUID, `decision` APPROVE/CHALLENGE/REVIEW/DECLINE, `score`, `reasons` y `modelVersion`; **NO devuelve tenantId**. Su `Idempotency-Key` es estable por tenant y solicitud y se almacena en el ledger de Fraud.
+
+## Implementación
+- `businessosCanonicalFraud.js`: mapeo exacto de request Fraud y sus IDs deterministas, sin inventar aprobación. Rechaza cliente/vault no ACTIVE, tenant/cliente/cuenta/proveedor cruzados, referencias inválidas, solicitud pagada/no vinculada, importes no válidos y datos de riesgo incompletos. El timestamp es original de la solicitud, no fecha improvisada para reintentos.
+- `businessosCanonicalEvidenceGate.js`: secuencia opt-in de ports internos de identidad canónica, CustomerVault, R9 Security Engine y evaluación Fraud. El endpoint Fraud debe usar autenticación y tenant propios del servicio, NO el token delegado de audiencia Payment. El `assessFraud` de pruebas devuelve un envoltorio **local** `transportTenantId` + `tenantContextVerified`; estos campos NO existen en el DTO remoto y solo pueden venir del adaptador de transporte seguro, tras verificar contexto de tenant. No representan una firma criptográfica por sí mismos.
+- Solo ante Security Engine `DELEGATED_BOUNDED` y Fraud `APPROVE` con `assessmentId` válido y mismo tenant de transporte devuelve `EVIDENCE_CANDIDATE_OFFLINE_ONLY`. Esto **no es autorización Payment**, no puede utilizarse directamente como método de cargo; R11 debe añadir persistencia/correlación, fuente verificable y orquestación transaccional.
+- Nada de esto está inyectado en `src/index.js`, ni se montan rutas nuevas. Sin llamadas Meta, Openpay, Security Engine o Fraud reales; tests con ports falsos.
+
+## Bloqueos explícitos / NO_GO
+- No se dispone de API autorizada de lectura CustomerVault ni conexión real a un servicio de identidad del cliente; hacen falta contratos de puerto interno o una API acordada. El cliente WABA y un ID Openpay no constituyen `customerId` canónico.
+- El DTO de Fraud no incluye tenant ni certificación de integridad de decisión; antes de ejecutar Payment debe certificarse el origen de la evaluación y su vinculación al tenant/solicitud, su recuperación y uso único. Una cadena `APPROVE` proveniente de navegador es insegura.
+- `getRequest()` PostgreSQL R4 no expone `createdAt` todavía; falta adaptador async con snapshot immutable y fencing por solicitud para integrar R10 al runtime. No hay despacho económico desde R10.
+- BusinessOS Payment Engine conserva NO_GO hasta su propia certificación. `main/master`, secretos, `.env`, hosts y otros repos sin cambios. Solo PR Draft y pruebas offline.
