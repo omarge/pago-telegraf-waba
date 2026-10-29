@@ -1,4 +1,4 @@
-name: R13 A+B Targeted Offline Authority Checks
+name: R13 Targeted Offline Authority Checks
 on:
   pull_request:
     paths:
@@ -18,9 +18,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Only R13 offline contract tests (no DB, Docker or Kafka)
+      - name: R13 focused offline contract matrix (no DB, Docker or Kafka)
         run: |
           node --check src/businessosR13KafkaDeploymentPreflight.js
           node --check src/businessosR13ReconciliationAuthorityContract.js
           node --check src/businessosR13OfflineReadinessGate.js
-          node --test tests/businessos-r13-kafka-deployment-preflight.test.js tests/businessos-r13-reconciliation-authority-contract.test.js tests/businessos-r13-offline-readiness.test.js
+          node --check src/businessosR13KafkaAclEvidenceReview.js
+          node --check src/businessosR13EconomicEvidenceCoverage.js
+          node --check src/businessosR13EvidenceCompletenessGate.js
+          node --test tests/businessos-r13-*.test.js
