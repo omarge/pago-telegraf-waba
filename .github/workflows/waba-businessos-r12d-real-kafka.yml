@@ -1,0 +1,83 @@
+name: WABA R12-D Real Ephemeral Kafka Wire (No TLS Certification)
+on:
+  push:
+    branches:
+      - feature/waba-r12d-kafka-real-broker-ci-20261028
+  pull_request:
+    paths:
+      - 'tests/businessos-r12-real-ephemeral-kafka.test.js'
+      - '.github/workflows/waba-businessos-r12d-real-kafka.yml'
+permissions:
+  contents: read
+jobs:
+  real-kafka-functional-no-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: r12d
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: r12d_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U r12d -d r12d_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://r12d:offline_only@127.0.0.1:5432/r12d_test
+      R12_D_EPHEMERAL_KAFKA: '1'
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Start disposable localhost Apache Kafka (PLAINTEXT CI ONLY)
+        run: |
+          docker run -d --name r12d-ephemeral-kafka --rm -p 127.0.0.1:9092:9092 apache/kafka:3.9.1
+      - name: Run genuine KafkaJS protocol, consumer group, PostgreSQL offset/replay test
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --test tests/businessos-r12-real-ephemeral-kafka.test.js
+      - name: Destroy disposable broker
+        if: always()
+        run: docker rm -f r12d-ephemeral-kafka || true
+  offline-full-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: r12d_full
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: r12d_full_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U r12d_full -d r12d_full_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://r12d_full:offline_only@127.0.0.1:5432/r12d_full_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Entire offline WABA suite
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
+          node --test tests/*.test.js
