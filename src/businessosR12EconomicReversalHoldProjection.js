@@ -82,6 +82,15 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
      isPaid:false,isFinal:false,isReconciled:false,
      isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
    }
+   // R27-B: a legacy both-NULL reservation has no original pre-POST
+   // economic identity. Never classify it as a clean reconciliation candidate.
+   // Keep any stored capture record diagnostic-only until independent authority.
+   if(legacy){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'LEGACY_ECONOMIC_RESERVATION_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+   }
    // One payment intent cannot be the source of two separately authorized
    // WABA requests. Kafka's ingress lookup already holds on ambiguity, but
    // the read-side snapshot must independently recheck historical bindings.
