@@ -3,12 +3,7 @@ on:
   push:
     branches:
       - feature/waba-r12-kafka-hold-diagnostics-20261028
-  pull_request:
-    paths:
-      - 'src/businessosR12*.js'
-      - 'tests/businessos-r12-kafka-hold-diagnostics.test.js'
-      - 'db/waba-r12-*.sql'
-      - '.github/workflows/waba-businessos-r12-hold-diagnostics.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
