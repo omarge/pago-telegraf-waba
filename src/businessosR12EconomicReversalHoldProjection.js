@@ -5,6 +5,8 @@ const crypto=require('node:crypto');
 // No PAID, receipt, ledger mutation, Kafka commit, PSP or Meta effects.
 const REQUEST=/^KPR-[A-F0-9]{32}$/;
 const ACCOUNT=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// Limit untrusted Kafka replay history per tenant+intent in one snapshot.
+const MAX_CANONICAL_EVENTS=4096;
 const THREATS=new Set([
  'PaymentRefunded','PaymentExecutionUnknown','PaymentExecutionResolved',
  'PaymentFailed'
@@ -55,8 +57,15 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
    const events=await c.query(
     'SELECT event_id,payload_sha256,event_type,payment_attempt_id,'+
     'disposition,record_offset,partition_id FROM waba_channel.canonical_kafka_ingress '+
-    'WHERE tenant_id=$1 AND payment_intent_id=$2 ORDER BY created_at,event_id',
-    [h.tenant_id,h.businessos_intent_id]);
+    'WHERE tenant_id=$1 AND payment_intent_id=$2 ORDER BY created_at,event_id '+
+    'LIMIT $3',
+    [h.tenant_id,h.businessos_intent_id,MAX_CANONICAL_EVENTS+1]);
+   if(events.rowCount>MAX_CANONICAL_EVENTS){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'CANONICAL_HISTORY_LIMIT_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+   }
    // An unacknowledged poison/foreign event may contain a financial fact
    // missing from the accepted inbox. Its Kafka key is already hashed by
    // the HOLD journal; compare hashes, never persist or expose the raw key.
