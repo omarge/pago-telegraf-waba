@@ -1,0 +1,45 @@
+name: WABA BusinessOS R11 Bounded Durable Drain Worker
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r11-r6r8-bounded-drain-worker-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR11OfflineDrainWorker.js'
+      - 'tests/businessos-r11-offline-drain-worker.test.js'
+      - '.github/workflows/waba-businessos-r11-drain-worker.yml'
+permissions:
+  contents: read
+jobs:
+  drain-worker-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_drain
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_drain_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_drain -d waba_drain_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_drain:offline_test_only@127.0.0.1:5432/waba_drain_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Full regression and R11 bounded drain worker
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosR11OfflineDrainWorker.js
+          node --test tests/*.test.js
