@@ -268,3 +268,35 @@ pgTest('R20-B foreign tenant same intent does not block authorized local capture
  assert.equal(await count('canonical_capture_candidates',a.requestId),1);
  await c.stop();
 });
+
+pgTest('R21-A forged or partial pre-POST reservation HOLDs Kafka before candidate and offset ACK',async()=>{
+ const f=await setup(),fake=fakeKafka(),c=createR12SecuredKafkaConsumer({
+  enabled:true,pool,config:cfg(),kafkaFactory:fake.factory});
+ await c.start();
+ const reserved=async(intent,attempt)=>pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET reserved_businessos_intent_id=$1,reserved_businessos_attempt_id=$2 '+
+  'WHERE request_id=$3',[intent,attempt,f.requestId]);
+ try{
+  await reserved('another-payment-intent',f.attempt);
+  await assert.rejects(()=>fake.state.callback(record(f.intent,f.attempt,{offset:'170'})),
+   /HELD_NO_OFFSET_COMMIT/);
+  await reserved(f.intent,'another-payment-attempt');
+  await assert.rejects(()=>fake.state.callback(record(f.intent,f.attempt,{offset:'171'})),
+   /HELD_NO_OFFSET_COMMIT/);
+  await reserved(f.intent,null);
+  await assert.rejects(()=>fake.state.callback(record(f.intent,f.attempt,{offset:'172'})),
+   /HELD_NO_OFFSET_COMMIT/);
+  assert.equal(fake.state.commits.length,0);
+  assert.equal(await count('canonical_capture_candidates',f.requestId),0);
+  const x=await pool.query(
+   'SELECT COUNT(*)::int AS n FROM waba_channel.canonical_kafka_ingress '+
+   'WHERE topic=$1 AND partition_id=0 AND record_offset IN (170,171,172)',[TOPIC]);
+  assert.equal(x.rows[0].n,0);
+  // A repaired, exact pre-POST reservation can admit a CANDIDATE only.
+  await reserved(f.intent,f.attempt);
+  await fake.state.callback(record(f.intent,f.attempt,{offset:'173'}));
+  assert.deepEqual(fake.state.commits.map(x=>x[0].offset),['174']);
+  assert.equal(await count('canonical_capture_candidates',f.requestId),1);
+ }finally{await c.stop();}
+});

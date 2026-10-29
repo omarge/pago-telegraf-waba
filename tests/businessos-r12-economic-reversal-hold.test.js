@@ -263,3 +263,26 @@ pgTest('R19-B global event-id reused on another intent or tenant HOLDs even with
  assert.equal(y.state,'CROSS_SCOPE_EVENT_ID_REUSE_HOLD');
  assert.equal(y.isReconciled,false);assert.equal(y.isProviderVerified,false);
 });
+
+pgTest('R21-B altered post-POST identity or partial reservation cannot appear as clean capture',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,
+  'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ const reserve=async(intent,attempt)=>pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET reserved_businessos_intent_id=$1,reserved_businessos_attempt_id=$2 '+
+  'WHERE request_id=$3',[intent,attempt,f.id]);
+ await reserve('foreign-r21-intent',f.attempt);
+ assert.equal((await assess(f)).state,'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ await reserve(f.intent,'foreign-r21-attempt');
+ assert.equal((await assess(f)).state,'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ await reserve(f.intent,null);
+ let result=await assess(f);
+ assert.equal(result.state,'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ assert.equal(result.canSendReceipt,false);
+ await reserve(f.intent,f.attempt);
+ result=await assess(f);
+ assert.equal(result.state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ assert.equal(result.isPaid,false);
+ assert.equal(result.canSendReceipt,false);
+});

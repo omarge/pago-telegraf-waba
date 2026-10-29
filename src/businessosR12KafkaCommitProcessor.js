@@ -109,7 +109,8 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
      // The economic intent is the one-to-one boundary. Filtering by
      // attempt before checking ambiguity could hide an authorization for
      // ANOTHER attempt of the SAME tenant + intent.
-     'SELECT request_id,payer_account_id,businessos_attempt_id '+
+     'SELECT request_id,payer_account_id,businessos_attempt_id,'+
+     'reserved_businessos_intent_id,reserved_businessos_attempt_id '+
      'FROM waba_channel.payment_authorization_handoffs '+
      'WHERE tenant_id=$1 AND businessos_intent_id=$2 '+
      'AND outcome=$3 LIMIT 2',
@@ -119,6 +120,16 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
    if(lookup.rowCount!==1||
       lookup.rows[0].businessos_attempt_id!==candidate.paymentAttemptId)
     return {state:'UNBOUND_OR_AMBIGUOUS_CAPTURE_HOLD',mayCommit:false};
+   // R20 pre-POST reservation is a separate immutable economic identity.
+   // Legacy handoffs with BOTH reserved IDs NULL remain candidates-only,
+   // never positive finality. A partial or contradictory reservation HOLDs
+   // before any candidate write or Kafka offset confirmation.
+   const bound=lookup.rows[0];
+   const legacy=bound.reserved_businessos_intent_id===null&&
+    bound.reserved_businessos_attempt_id===null;
+   if(!legacy&&(bound.reserved_businessos_intent_id!==candidate.paymentIntentId||
+      bound.reserved_businessos_attempt_id!==candidate.paymentAttemptId))
+    return {state:'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD',mayCommit:false};
    let saved;
    try{
     saved=await captureInbox.persistCandidate({

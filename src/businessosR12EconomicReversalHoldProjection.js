@@ -33,6 +33,7 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
    const a=await c.query(
     'SELECT h.request_id,h.payer_account_id,h.tenant_id,h.businessos_intent_id,'+
     'h.businessos_attempt_id,h.amount_cents,h.currency,h.outcome,'+
+    'h.reserved_businessos_intent_id,h.reserved_businessos_attempt_id,'+
     'r.state AS request_state,r.payer_account_id AS request_payer,'+
     'r.amount_cents AS request_amount,r.currency AS request_currency '+
     'FROM waba_channel.payment_authorization_handoffs h '+
@@ -51,6 +52,19 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
       h.currency!=='MXN'||h.request_currency!=='MXN'){
     await c.query('COMMIT');active=false;
     return {state:'HANDOFF_NOT_VALID_HOLD',isPaid:false};
+   }
+   // R20's expected economic identity was reserved before the original
+   // financial POST. A post-POST mutation of the apparent finalized IDs
+   // must not produce a clean read-side capture candidate.
+   // Both NULL represents a legacy handoff: it remains non-authoritative.
+   const legacy=h.reserved_businessos_intent_id===null&&
+    h.reserved_businessos_attempt_id===null;
+   if(!legacy&&(h.reserved_businessos_intent_id!==h.businessos_intent_id||
+      h.reserved_businessos_attempt_id!==h.businessos_attempt_id)){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
    }
    // One payment intent cannot be the source of two separately authorized
    // WABA requests. Kafka's ingress lookup already holds on ambiguity, but
