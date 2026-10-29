@@ -182,3 +182,16 @@ pgTest('R17-A same exact PaymentCaptured redelivered at different offset is not 
  assert.equal(r.observedEvents,2);
  assert.equal(r.isPaid,false);
 });
+pgTest('R17-B canonical candidate tenant and intent must match R11 authorized handoff exactly',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ await pool.query('UPDATE waba_channel.canonical_capture_candidates SET tenant_id=$1 WHERE request_id=$2',
+  ['foreign-tenant',f.id]);
+ assert.equal((await assess(f)).state,'CAPTURE_EVIDENCE_MISMATCH_HOLD');
+ await pool.query('UPDATE waba_channel.canonical_capture_candidates '+
+  'SET tenant_id=$1,payment_intent_id=$2 WHERE request_id=$3',
+  [TENANT,'foreign-payment-intent',f.id]);
+ const r=await assess(f);
+ assert.equal(r.state,'CAPTURE_EVIDENCE_MISMATCH_HOLD');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
+});
