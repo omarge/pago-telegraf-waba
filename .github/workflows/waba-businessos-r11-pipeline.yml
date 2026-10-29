@@ -1,0 +1,47 @@
+name: WABA BusinessOS R11 R6-R8 Durable Offline Pipeline
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r11-r6r8-offline-pipeline-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR11OfflineInboundPipeline.js'
+      - 'src/businessosPgRoutingGate.js'
+      - 'tests/businessos-r11-offline-inbound-pipeline.test.js'
+      - '.github/workflows/waba-businessos-r11-pipeline.yml'
+permissions:
+  contents: read
+jobs:
+  pipeline-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_pipeline
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_pipeline_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_pipeline -d waba_pipeline_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_pipeline:offline_test_only@127.0.0.1:5432/waba_pipeline_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Full regression plus real PostgreSQL 18 pipeline tests
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosR11OfflineInboundPipeline.js
+          node --check src/businessosPgRoutingGate.js
+          node --test tests/*.test.js
