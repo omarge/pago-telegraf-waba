@@ -33,7 +33,7 @@ function record(n,offset){
   source:{aggregateType:'Payment',aggregateId:attempt},orderingKey:intent,
   correlationId:intent,causationId:attempt,idempotencyKey:attempt,
   occurredAt:'2026-10-28T22:00:00Z'};
- const message=t.create({meta,paymentId:intent,
+ const message=t.fromObject({meta,paymentId:intent,
   amount:{currency:{code:'MXN'},amountDecimal:'10.00'},
   status:'PAYMENT_STATUS_AUTHORIZED'});
  return {offset:String(offset),key:Buffer.from(TENANT+'|'+intent),

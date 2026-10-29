@@ -56,7 +56,7 @@ function message(tag,offset,{capture=false,wrongAmount=false}={}){
   eventVersion:1,schemaVersion:1,correlationId:intent,causationId:attempt,
   orderingKey:intent,idempotencyKey:attempt,occurredAt:'2026-10-28T22:00:00Z'};
  const type=root.lookupType('businessos.integration.v1.'+kind);
- const wire=type.create({meta,paymentId:intent,
+ const wire=type.fromObject({meta,paymentId:intent,
   amount:{currency:{code:'MXN'},amountDecimal:wrongAmount?'99.99':'12.75'},
   ...(capture?{}:{status:'PAYMENT_STATUS_AUTHORIZED'})});
  return {offset:String(offset),value:Buffer.from(type.encode(wire).finish()),
