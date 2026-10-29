@@ -2,7 +2,7 @@
 -- No offsets are committed until the event decision is durable.
 BEGIN;
 CREATE TABLE IF NOT EXISTS waba_channel.canonical_kafka_ingress (
- event_id text PRIMARY KEY,
+ event_id text NOT NULL,
  payload_sha256 char(64) NOT NULL CHECK(payload_sha256 ~ '^[0-9a-f]{64}$'),
  topic text NOT NULL CHECK(topic='businessos.payment.events.v1'),
  partition_id integer NOT NULL CHECK(partition_id>=0),
@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS waba_channel.canonical_kafka_ingress (
  payment_attempt_id text NOT NULL,
  disposition text NOT NULL CHECK(disposition IN ('CAPTURE_CANDIDATE_ONLY','NON_CAPTURE_HOLD')),
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- UNIQUE(topic,partition_id,record_offset)
+ PRIMARY KEY(topic,partition_id,record_offset)
 );
+CREATE INDEX IF NOT EXISTS r12_kafka_ingress_event_id
+ ON waba_channel.canonical_kafka_ingress(event_id);
 CREATE INDEX IF NOT EXISTS r12_kafka_ingress_tenant_attempt
  ON waba_channel.canonical_kafka_ingress(tenant_id,payment_attempt_id,created_at);
 COMMIT;
