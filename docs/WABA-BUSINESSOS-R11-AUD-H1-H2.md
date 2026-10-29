@@ -4,9 +4,10 @@
 
 ## RED-first evidence
 
-- RED test commit `a366a9202ddf75c5a3e62600f034b9c4b81ea557`
-- [R11 RED PostgreSQL 18 run](https://github.com/omarge/pago-telegraf-waba/actions/runs/40800791116): 264 tests, 260 PASS, 4 FAIL.
-- Four observed adversarial failures: (H1) vault method substitution after Fraud, (H1) mismatched merchant/provider and IP, (H2) foreign intent/attempt DECLINED, (H2) foreign execution IDs in a PRE_EXECUTION_FAILED response.
+- First RED attempt on commit `a366a9202ddf75c5a3e62600f034b9c4b81ea557` contained **invalid fixtures**: G/H/J/K are not hexadecimal; this run is NOT relied on as security evidence. Preserved at [initial RED run](https://github.com/omarge/pago-telegraf-waba/actions/runs/40800791116).
+- Verified RED-only [Draft PR #35](https://github.com/omarge/pago-telegraf-waba/pull/35), commit `b8d51a4d9fd3fc263beacc9ec49d6e1da11cfd28`, corrects fixtures to AA/AB/AC/AD and runs against the original **unmodified R11**: [PostgreSQL 18 RED run](https://github.com/omarge/pago-telegraf-waba/actions/runs/40801412606), **264 tests, 260 PASS, 4 FAIL, 0 SKIP**.
+- Four validated security failures: H1 vault method substitution returned `AUTHORIZED_PENDING_CAPTURE_NOT_PAID` instead of denial, H1 provider/merchant substitution also returned authorization; H2 foreign intent DECLINED was recorded as `DECLINED`; H2 a foreign execution identity on PRE_EXECUTION_FAILED was recorded instead of held.
+- Corrected implementation, commit `84c913f16eca8774029e406f9fd1ecc4cc6f0163`: [R11 PostgreSQL GREEN](https://github.com/omarge/pago-telegraf-waba/actions/runs/40801359403) and [R10 integrated regression GREEN](https://github.com/omarge/pago-telegraf-waba/actions/runs/40801359441), **265 tests, 265 PASS, 0 FAIL, 0 SKIP** in each full run; WABA menu and HTTP Happy Path also GREEN.
 
 ## Changes
 
