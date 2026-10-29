@@ -106,13 +106,18 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
    let lookup;
    try{
     lookup=await pool.query(
-     'SELECT request_id,payer_account_id FROM waba_channel.payment_authorization_handoffs '+
-     'WHERE tenant_id=$1 AND businessos_intent_id=$2 AND businessos_attempt_id=$3 '+
-     'AND outcome=$4 LIMIT 2',
-     [candidate.tenantId,candidate.paymentIntentId,candidate.paymentAttemptId,
+     // The economic intent is the one-to-one boundary. Filtering by
+     // attempt before checking ambiguity could hide an authorization for
+     // ANOTHER attempt of the SAME tenant + intent.
+     'SELECT request_id,payer_account_id,businessos_attempt_id '+
+     'FROM waba_channel.payment_authorization_handoffs '+
+     'WHERE tenant_id=$1 AND businessos_intent_id=$2 '+
+     'AND outcome=$3 LIMIT 2',
+     [candidate.tenantId,candidate.paymentIntentId,
       'AUTHORIZED_PENDING_CAPTURE']);
    }catch(_e){return {state:'DB_UNAVAILABLE_NO_EFFECT',mayCommit:false};}
-   if(lookup.rowCount!==1)
+   if(lookup.rowCount!==1||
+      lookup.rows[0].businessos_attempt_id!==candidate.paymentAttemptId)
     return {state:'UNBOUND_OR_AMBIGUOUS_CAPTURE_HOLD',mayCommit:false};
    let saved;
    try{
