@@ -286,3 +286,35 @@ pgTest('R21-B altered post-POST identity or partial reservation cannot appear as
  assert.equal(result.isPaid,false);
  assert.equal(result.canSendReceipt,false);
 });
+
+pgTest('R24-B read-side capture cannot remain clean when R4 source reservation changes',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ const original=await pool.query(
+  'SELECT payer_account_id,idempotency_key FROM waba_channel.authorization_reservations '+
+  'WHERE request_id=$1',[f.id]);
+ const prior=original.rows[0];
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET idempotency_key=$2 WHERE request_id=$1',[f.id,'r24-false-idempotency-'+f.id]);
+ let r=await assess(f);
+ assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET idempotency_key=$2,payer_account_id=$3 WHERE request_id=$1',
+  [f.id,prior.idempotency_key,'foreign-r24-payer']);
+ r=await assess(f);
+ assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
+ assert.equal(r.isReconciled,false);
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET payer_account_id=$2 WHERE request_id=$1',[f.id,prior.payer_account_id]);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+});
+pgTest('R24-B deleted R4 reservation is missing authority, never a clean capture',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ await pool.query('DELETE FROM waba_channel.authorization_reservations '+
+  'WHERE request_id=$1',[f.id]);
+ const r=await assess(f);
+ assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendWhatsApp,false);
+});
