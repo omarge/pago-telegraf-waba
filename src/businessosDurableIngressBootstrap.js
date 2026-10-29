@@ -5,7 +5,11 @@
 const {createPgSignedInbox}=require('./businessosPgSignedInbox');
 function durableMode(env={}){
  const flag=env.WABA_BUSINESSOS_DURABLE_WEBHOOK;
- if(flag==null||flag===''||flag==='0')return false;
+ if(flag==null||flag===''||flag==='0'){
+  if(env.WABA_BUSINESSOS_REQUIRE_DURABLE_WEBHOOK==='1')
+   throw Error('WABA_DURABLE_INGRESS_REQUIRED');
+  return false;
+ }
  if(flag==='1')return true;
  throw Error('WABA_DURABLE_INGRESS_MODE_INVALID');
 }
