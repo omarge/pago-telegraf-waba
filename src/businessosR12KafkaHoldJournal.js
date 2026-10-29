@@ -24,7 +24,8 @@ function createR12KafkaHoldJournal({enabled=false,pool}={}){
  async function recordHold({record,reason}={}){
   if(enabled!==true)return {state:'DISABLED',mayCommit:false};
   if(!ALLOWED.has(reason))return {state:'INVALID_REASON_HOLD',mayCommit:false};
-  const c=coordinate(record);
+  // KafkaJS nests the actual record offset under message.offset.
+  const c=coordinate({...record,offset:record?.message?.offset});
   const value=record?.message?.value,key=record?.message?.key;
   if(!c||!Buffer.isBuffer(value)||value.length>65536||
      !Buffer.isBuffer(key)||key.length>1024)
