@@ -4,6 +4,7 @@
 // Not mounted by the WABA runtime. Never infer PaymentCapture/PAID from AUTHORIZED.
 const crypto=require('node:crypto');
 const {buildAuthorizationRequest}=require('./businessosAuthorizationAdapter');
+const {methodBindingDigest}=require('./businessosMethodBinding');
 const ORDER=/^KPR-[A-F0-9]{32}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,7 +30,7 @@ function sameRequest(row,prior){
   row.requester_wa_id===prior.requesterId&&
   row.created_at instanceof Date&&row.created_at.toISOString()===prior.createdAt;
 }
-function authorizeAuthority({authority,evidence,accountId,request}={}){
+function authorizeAuthority({authority,evidence,accountId,request,device}={}){
  if(!authority||!evidence||evidence.state!=='EVIDENCE_CANDIDATE_OFFLINE_ONLY'||
     evidence.requestId!==request.id||
     evidence.tenantId!==authority.tenantId||
@@ -40,6 +41,21 @@ function authorizeAuthority({authority,evidence,accountId,request}={}){
     authority.fraudDecision!=='APPROVE'||
     !TOKEN.test(authority.delegatedBearer||''))
   throw Error('R11_TRUSTED_EVIDENCE_MISMATCH');
+ // R10 calculates this from the vault method actually assessed by Fraud.
+ // R11 may not use a different CustomerVault reference, merchant or provider.
+ const observedBinding=methodBindingDigest({
+  requestId:request.id,accountId,
+  tenantId:authority.tenantId,customerId:authority.customerId,
+  merchantId:authority.merchantId,providerAccountId:authority.providerAccountId,
+  amountCents:request.amount,
+  provider:authority.paymentMethodReferenceProvider,
+  opaqueReference:authority.paymentMethodReference,
+  assessmentId:authority.fraudAssessmentId,
+  deviceFingerprint:device?.fingerprint,deviceIp:device?.ip
+ });
+ if(evidence.paymentMethodBindingDigest!==observedBinding||
+    authority.clientIpAddress!==device.ip)
+  throw Error('R11_METHOD_FRAUD_BINDING_MISMATCH');
  const payment={id:request.id,amount:request.amount,
   currency:'MXN',state:'PENDING',accountId};
  const body=buildAuthorizationRequest({payment,authority});
@@ -87,8 +103,8 @@ function createR11FencedAuthorization({
    evidence=await prepareEvidence.prepare({request:record,accountId,device});
    if(evidence?.state!=='EVIDENCE_CANDIDATE_OFFLINE_ONLY')
     return {state:'EVIDENCE_NOT_AUTHORIZED'};
-   authority=await resolveAuthority({request:record,accountId,evidence});
-   preflight=authorizeAuthority({authority,evidence,accountId,request:record});
+   authority=Object.freeze({...await resolveAuthority({request:record,accountId,evidence})});
+   preflight=authorizeAuthority({authority,evidence,accountId,request:record,device});
   }catch(_e){return {state:'TRUSTED_MAPPING_UNVERIFIED'};}
   const authorityFingerprint=crypto.createHash('sha256')
    .update(JSON.stringify({
@@ -134,7 +150,11 @@ function createR11FencedAuthorization({
   };
   const terminal=map[outcome?.state];
   if(!terminal)return {state:'UNKNOWN_HOLD_NO_AUTO_RETRY'};
-  if(terminal==='AUTHORIZED_PENDING_CAPTURE'&&
+  // Every execution-bearing outcome must identify THIS payment, even DECLINED.
+  const hasExecutionIds=outcome?.paymentIntentId!=null||
+   outcome?.paymentAttemptId!=null;
+  if((terminal==='AUTHORIZED_PENDING_CAPTURE'||terminal==='DECLINED'||
+      hasExecutionIds)&&
      (outcome.paymentIntentId!==preflight.body.paymentIntentId||
       outcome.paymentAttemptId!==preflight.body.paymentAttemptId))
    return {state:'UNKNOWN_HOLD_NO_AUTO_RETRY'};
