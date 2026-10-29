@@ -10,7 +10,8 @@ const TYPES=new Set(['PaymentCaptured','PaymentAuthorized','PaymentFailed',
 function offsetOf(s){
  if(typeof s!=='string'||!POS.test(s)||s.length>19)return null;
  const n=BigInt(s);
- return n<=MAX_OFFSET?n:null;
+ // One past the record offset is committed; it must also fit signed int64.
+ return n<MAX_OFFSET?n:null;
 }
 function recordCoordinate({topic,partition,offset}={}){
  const n=offsetOf(offset);
