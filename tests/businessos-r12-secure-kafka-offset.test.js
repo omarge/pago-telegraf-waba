@@ -39,7 +39,7 @@ function record(intent,attempt,{type='PaymentCaptured',date='2026-10-28T21:00:00
  if(type==='PaymentExecutionUnknown'){
   message.paymentAttemptId=attempt;message.status='OUTCOME_STATUS_UNKNOWN';
  }
- const value=Buffer.from(t.encode(t.create(message)).finish());
+ const value=Buffer.from(t.encode(t.fromObject(message)).finish());
  const headers={
   'content-type':Buffer.from('application/x-protobuf'),
   'businessos-event-type':Buffer.from(type),
