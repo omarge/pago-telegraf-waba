@@ -1,0 +1,45 @@
+name: WABA BusinessOS R12 Capture Observation Candidate Offline
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r12-economic-observation-gate-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR12CaptureObservationGate.js'
+      - 'tests/businessos-r12-capture-observation-gate.test.js'
+      - '.github/workflows/waba-businessos-r12-capture-observation.yml'
+permissions:
+  contents: read
+jobs:
+  r12-observation-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_r12
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_r12_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_r12 -d waba_r12_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_r12:offline_test_only@127.0.0.1:5432/waba_r12_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: R12 isolated observation gate and entire WABA regression (offline)
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosR12CaptureObservationGate.js
+          node --test tests/*.test.js
