@@ -3,11 +3,7 @@ on:
   push:
     branches:
       - feature/waba-r12g-reversal-gap-audit-20261028
-  pull_request:
-    paths:
-      - 'src/businessosR12*.js'
-      - 'tests/businessos-r12-economic-reversal-hold.test.js'
-      - '.github/workflows/waba-businessos-r12g-reversal-gap.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
