@@ -6,7 +6,7 @@ const {createPostgresChannelStore}=require('../src/businessosPgChannelStore');
 const {createBusinessosAuthorizationAdapter}=require('../src/businessosAuthorizationAdapter');
 const {createR11FencedAuthorization}=require('../src/businessosR11FencedAuthorization');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
-const REQUEST=n=>'KPR-'+'F'.repeat(31)+n;
+const REQUEST=n=>'KPR-'+'F'.repeat(30)+'0'+n;
 const PAYER='waba-payer-r11',OTHER='waba-attacker-r11',FROM='5215555550002';
 const TENANT='tenant-businessos-r11',CUSTOMER='canonical-customer-r11';
 const FRAUD='11111111-2222-4333-8444-555555555555';
