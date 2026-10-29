@@ -180,3 +180,35 @@ pgTest('R22-A direct inbox: duplicate tenant+intent handoff blocks even when att
  assert.equal(safe.state,'STORED_CAPTURE_CANDIDATE_NO_PAID');
  assert.equal(safe.isPaid,false);assert.equal(safe.canSendReceipt,false);
 });
+
+pgTest('R24-A direct candidate inbox rejects a changed R4 idempotency or payer reservation',async()=>{
+ const f=await setup(),o=inbox();
+ const original=await pool.query(
+  'SELECT payer_account_id,idempotency_key FROM waba_channel.authorization_reservations '+
+  'WHERE request_id=$1',[f.id]);
+ const saved=original.rows[0];
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET idempotency_key=$2 WHERE request_id=$1',[f.id,'r24-inbox-forged-'+f.id]);
+ let r=await o.persistCandidate({requestId:f.id,accountId:PAYER,record:f.record});
+ assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
+ assert.equal(await count(f.id),0);
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET idempotency_key=$2,payer_account_id=$3 WHERE request_id=$1',
+  [f.id,saved.idempotency_key,'foreign-r24-payer']);
+ r=await o.persistCandidate({requestId:f.id,accountId:PAYER,record:f.record});
+ assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
+ assert.equal(await count(f.id),0);
+ await pool.query('UPDATE waba_channel.authorization_reservations '+
+  'SET payer_account_id=$2 WHERE request_id=$1',[f.id,saved.payer_account_id]);
+ r=await o.persistCandidate({requestId:f.id,accountId:PAYER,record:f.record});
+ assert.equal(r.state,'STORED_CAPTURE_CANDIDATE_NO_PAID');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
+});
+pgTest('R24-A missing R4 source reservation never stores a direct capture candidate',async()=>{
+ const f=await setup(),o=inbox();
+ await pool.query('DELETE FROM waba_channel.authorization_reservations '+
+  'WHERE request_id=$1',[f.id]);
+ const r=await o.persistCandidate({requestId:f.id,accountId:PAYER,record:f.record});
+ assert.equal(r.state,'NOT_ELIGIBLE_HOLD');
+ assert.equal(await count(f.id),0);
+});
