@@ -19,7 +19,7 @@ function wire(kind,metadata={},extra={}){
   eventVersion:1,schemaVersion:1,occurredAt:'2026-10-28T22:11:12Z',...metadata};
  const payload={meta,paymentId:INTENT,
   amount:{currency:{code:'MXN'},amountDecimal:'12.75'},...extra};
- if(kind==='PaymentAuthorized')payload.status='PAYMENT_STATUS_AUTHORIZED';
+ if(kind==='PaymentAuthorized')payload.status=extra.status??'PAYMENT_STATUS_AUTHORIZED';
  if(kind==='PaymentFailed')payload.status=extra.status??'OUTCOME_STATUS_FAILED';
  if(kind==='PaymentExecutionUnknown'){
   payload.paymentAttemptId=extra.paymentAttemptId??ATTEMPT;
