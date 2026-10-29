@@ -220,3 +220,23 @@ pgTest('R18-B 4097 replayed economic facts cannot cause unbounded candidate read
  assert.equal(r.canSendReceipt,false);
  assert.equal(r.isReconciled,false);
 });
+
+pgTest('R19-A duplicated authorized WABA request for one tenant+intent is HOLD despite matched capture',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ const other=await setup();
+ // An unrelated tenant must not create a cross-tenant false collision.
+ await pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET tenant_id=$1,businessos_intent_id=$2 WHERE request_id=$3',
+  ['foreign-r19-tenant',f.intent,other.id]);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ // Different request+attempt, SAME tenant+economic payment intent.
+ await pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs SET tenant_id=$1 '+
+  'WHERE request_id=$2',[TENANT,other.id]);
+ const r=await assess(f);
+ assert.equal(r.state,'AMBIGUOUS_PAYMENT_INTENT_BINDING_HOLD');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
+ assert.equal(r.isReconciled,false);
+});
