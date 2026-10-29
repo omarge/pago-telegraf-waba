@@ -142,3 +142,41 @@ test('R12 canonical gate disabled and DB outage return no effect',async()=>{
  });
  assert.equal(result.state,'DB_UNAVAILABLE_NO_EFFECT');
 });
+
+pgTest('R22-A direct inbox: pre-POST reserved identity mismatch and partial reserve never persist capture',async()=>{
+ const v=await setup(),p=inbox();
+ const reserve=async(intent,attempt)=>pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET reserved_businessos_intent_id=$1,reserved_businessos_attempt_id=$2 '+
+  'WHERE request_id=$3',[intent,attempt,v.id]);
+ await reserve('foreign-economic-intent',v.attempt);
+ assert.equal((await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record})).state,
+  'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ await reserve(v.intent,'foreign-economic-attempt');
+ assert.equal((await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record})).state,
+  'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ await reserve(v.intent,null);
+ assert.equal((await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record})).state,
+  'RESERVED_ECONOMIC_IDENTITY_MISMATCH_HOLD');
+ assert.equal(await count(v.id),0);
+ await reserve(v.intent,v.attempt);
+ const ok=await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record});
+ assert.equal(ok.state,'STORED_CAPTURE_CANDIDATE_NO_PAID');
+ assert.equal(ok.isPaid,false);assert.equal(ok.canSendReceipt,false);
+});
+pgTest('R22-A direct inbox: duplicate tenant+intent handoff blocks even when attempt differs',async()=>{
+ const v=await setup(),other=await setup(),p=inbox();
+ await pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET tenant_id=$1,businessos_intent_id=$2 WHERE request_id=$3',
+  [TENANT,v.intent,other.id]);
+ const result=await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record});
+ assert.equal(result.state,'AMBIGUOUS_PAYMENT_INTENT_BINDING_HOLD');
+ assert.equal(await count(v.id),0);
+ await pool.query(
+  'UPDATE waba_channel.payment_authorization_handoffs SET tenant_id=$1 WHERE request_id=$2',
+  ['other-r22-tenant',other.id]);
+ const safe=await p.persistCandidate({requestId:v.id,accountId:PAYER,record:v.record});
+ assert.equal(safe.state,'STORED_CAPTURE_CANDIDATE_NO_PAID');
+ assert.equal(safe.isPaid,false);assert.equal(safe.canSendReceipt,false);
+});

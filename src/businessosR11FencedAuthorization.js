@@ -157,6 +157,39 @@ function createR11FencedAuthorization({
       outcome.paymentAttemptId!==preflight.body.paymentAttemptId))
    return {state:'UNKNOWN_HOLD_NO_AUTO_RETRY'};
   const updated=await failSafeTxn(async c=>{
+   // A provider may already have been invoked. Before accepting its reply,
+   // re-lock and revalidate the SAME original request, handoff authority
+   // and R4 reservation. A post-POST mutation is UNKNOWN, never a retry.
+   const checked=await c.query(
+    'SELECT h.*,r.request_id AS req_id,r.payer_account_id AS req_payer,'+
+    'r.requester_wa_id AS req_requester,r.amount_cents AS req_amount,'+
+    'r.currency AS req_currency,r.state AS req_state,'+
+    'r.created_at AS req_created_at,ar.payer_account_id AS reservation_payer,'+
+    'ar.idempotency_key AS reservation_idempotency '+
+    'FROM waba_channel.payment_authorization_handoffs h '+
+    'JOIN waba_channel.requests r ON r.request_id=h.request_id '+
+    'JOIN waba_channel.authorization_reservations ar ON ar.request_id=h.request_id '+
+    'WHERE h.request_id=$1 FOR UPDATE OF h,r,ar',[requestId]);
+   const v=checked.rowCount===1?checked.rows[0]:null;
+   if(!v||v.outcome!=='UNKNOWN_HOLD'||
+      v.payer_account_id!==accountId||
+      v.tenant_id!==authority.tenantId||
+      v.customer_id!==authority.customerId||
+      v.fraud_assessment_id!==authority.fraudAssessmentId||
+      v.authority_fingerprint!==authorityFingerprint||
+      Number(v.amount_cents)!==record.amount||v.currency!=='MXN'||
+      v.idempotency_key!==preflight.body.idempotencyKey||
+      v.reserved_businessos_intent_id!==preflight.body.paymentIntentId||
+      v.reserved_businessos_attempt_id!==preflight.body.paymentAttemptId||
+      v.reservation_payer!==accountId||
+      v.reservation_idempotency!==preflight.body.idempotencyKey||
+      v.req_id!==record.id||v.req_payer!==accountId||
+      v.req_requester!==record.requesterId||
+      v.req_state!=='PENDING'||v.req_currency!=='MXN'||
+      Number(v.req_amount)!==record.amount||
+      !(v.req_created_at instanceof Date)||
+      v.req_created_at.toISOString()!==record.createdAt)
+    return {state:'HOLD_NO_AUTO_RETRY'};
    const q=await c.query(
     'UPDATE waba_channel.payment_authorization_handoffs SET outcome=$2,'+
     'businessos_intent_id=$3,businessos_attempt_id=$4,finalized_at=clock_timestamp() '+

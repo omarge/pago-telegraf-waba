@@ -382,3 +382,51 @@ pgTest('R20-A timeout retains pre-POST economic reservation and never retries',a
   'HOLD_NO_AUTO_RETRY');
  assert.equal(f.calls.transport,1);
 });
+
+pgTest('R22-B POST returns authorized but handoff Fraud binding mutated: no finalization or retry',async()=>{
+ const id=await setup('C0',1275);
+ const f=fixture({send:async req=>{
+  await pool.query('UPDATE waba_channel.payment_authorization_handoffs '+
+   'SET authority_fingerprint=$2 WHERE request_id=$1',[id,'7'.repeat(64)]);
+  return {httpStatus:200,body:{
+   status:'AUTHORIZED',tenantId:TENANT,
+   paymentIntentId:req.body.paymentIntentId,
+   paymentAttemptId:req.body.paymentAttemptId}};
+ }});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+ const h=await row(id);
+ assert.equal(h.outcome,'UNKNOWN_HOLD');
+ assert.ok(h.reserved_businessos_intent_id);
+ assert.equal(h.businessos_intent_id,null);
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+ assert.equal(f.calls.transport,1);
+});
+pgTest('R22-B POST returns authorized but original request amount changed: never finalize or retry',async()=>{
+ const id=await setup('C1',1275);
+ const f=fixture({send:async req=>{
+  await pool.query('UPDATE waba_channel.requests SET amount_cents=$2 '+
+   'WHERE request_id=$1',[id,50000]);
+  return {httpStatus:200,body:{
+   status:'AUTHORIZED',tenantId:TENANT,
+   paymentIntentId:req.body.paymentIntentId,
+   paymentAttemptId:req.body.paymentAttemptId}};
+ }});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+ assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+ assert.equal(f.calls.transport,1);
+});
+pgTest('R22-B POST returns authorized but R4 reservation replaced: never accept',async()=>{
+ const id=await setup('C2',1275);
+ const f=fixture({send:async req=>{
+  await pool.query('UPDATE waba_channel.authorization_reservations '+
+   'SET idempotency_key=$2 WHERE request_id=$1',[id,'injected-r22-foreign-idempotency']);
+  return {httpStatus:200,body:{
+   status:'AUTHORIZED',tenantId:TENANT,
+   paymentIntentId:req.body.paymentIntentId,
+   paymentAttemptId:req.body.paymentAttemptId}};
+ }});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+ assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+ assert.equal(f.calls.transport,1);
+});
