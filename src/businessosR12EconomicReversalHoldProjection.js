@@ -34,10 +34,15 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     'SELECT h.request_id,h.payer_account_id,h.tenant_id,h.businessos_intent_id,'+
     'h.businessos_attempt_id,h.amount_cents,h.currency,h.outcome,'+
     'h.reserved_businessos_intent_id,h.reserved_businessos_attempt_id,'+
+    'h.idempotency_key AS handoff_idempotency,'+
+    'ar.idempotency_key AS reservation_idempotency,'+
+    'ar.payer_account_id AS reservation_payer,'+
     'r.state AS request_state,r.payer_account_id AS request_payer,'+
     'r.amount_cents AS request_amount,r.currency AS request_currency '+
     'FROM waba_channel.payment_authorization_handoffs h '+
     'JOIN waba_channel.requests r ON r.request_id=h.request_id '+
+    'LEFT JOIN waba_channel.authorization_reservations ar '+
+    'ON ar.request_id=h.request_id '+
     'WHERE h.request_id=$1 AND h.payer_account_id=$2 AND r.payer_account_id=$2',
     [requestId,accountId]);
    if(a.rowCount!==1){
@@ -52,6 +57,17 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
       h.currency!=='MXN'||h.request_currency!=='MXN'){
     await c.query('COMMIT');active=false;
     return {state:'HANDOFF_NOT_VALID_HOLD',isPaid:false};
+   }
+   // The R4 durable authorization reservation is a prerequisite to
+   // believing the handoff's diagnostic candidate. A deleted or replaced
+   // payer/idempotency reservation is economic evidence mismatch, not a
+   // seemingly clean capture. Snapshot covers all three sources atomically.
+   if(h.reservation_payer!==accountId||
+      h.reservation_idempotency!==h.handoff_idempotency){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'AUTHORIZATION_RESERVATION_MISMATCH_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
    }
    // R20's expected economic identity was reserved before the original
    // financial POST. A post-POST mutation of the apparent finalized IDs
