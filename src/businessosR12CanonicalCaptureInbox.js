@@ -45,7 +45,7 @@ function createR12CanonicalCaptureInbox({enabled=false,pool,wireGate}={}){
     'FROM waba_channel.payment_authorization_handoffs h '+
     'JOIN waba_channel.requests r ON r.request_id=h.request_id '+
     'JOIN waba_channel.authorization_reservations ar ON ar.request_id=h.request_id '+
-    'WHERE h.request_id=$1 FOR UPDATE OF h,r,ar'
+    'WHERE h.request_id=$1 FOR UPDATE OF h,r,ar',
     [requestId]);
    if(rows.rowCount!==1){await c.query('COMMIT');active=false;return {state:'NOT_ELIGIBLE_HOLD'};}
    const h=rows.rows[0];
