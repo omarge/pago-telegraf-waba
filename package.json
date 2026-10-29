@@ -8,9 +8,8 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "dotenv": "^16.4.5"
-  },
-  "devDependencies": {
+    "dotenv": "^16.4.5",
     "pg": "^8.13.0"
-  }
+  },
+  "devDependencies": {}
 }
