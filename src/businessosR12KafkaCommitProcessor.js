@@ -39,19 +39,22 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
    const values=[candidate.eventId,candidate.payloadDigest,
     coordinate.topic,coordinate.partition,coordinate.offset,eventType,
     candidate.tenantId,candidate.paymentIntentId,candidate.paymentAttemptId,disposition];
+   // Event IDs are business facts; one fact may appear at many offsets.
+   // LIMIT 1 can overlook a conflicting replay if another row matches.
+   // The advisory transaction lock serializes writers for this event ID.
+   // Check EVERY persisted row before authorizing any new offset commit.
    const prior=await c.query(
-    'SELECT * FROM waba_channel.canonical_kafka_ingress WHERE event_id=$1 '+
-    'LIMIT 1 FOR UPDATE',[candidate.eventId]);
-   if(prior.rowCount===1){
-    const v=prior.rows[0];
-    if(v.payload_sha256!==candidate.payloadDigest||
+    'SELECT payload_sha256,event_type,tenant_id,payment_intent_id,'+
+    'payment_attempt_id,disposition FROM waba_channel.canonical_kafka_ingress '+
+    'WHERE event_id=$1 FOR UPDATE',[candidate.eventId]);
+   if(prior.rows.some(v=>
+       v.payload_sha256!==candidate.payloadDigest||
        v.event_type!==eventType||v.tenant_id!==candidate.tenantId||
        v.payment_intent_id!==candidate.paymentIntentId||
        v.payment_attempt_id!==candidate.paymentAttemptId||
-       v.disposition!==disposition){
-     await c.query('ROLLBACK');active=false;
-     return {state:'EVENT_ID_OR_OFFSET_COLLISION_HOLD'};
-    }
+       v.disposition!==disposition)){
+    await c.query('ROLLBACK');active=false;
+    return {state:'EVENT_ID_OR_OFFSET_COLLISION_HOLD'};
    }
    const saved=await c.query(
     'INSERT INTO waba_channel.canonical_kafka_ingress '+
