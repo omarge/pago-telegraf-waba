@@ -6,7 +6,7 @@ const {createPostgresChannelStore}=require('../src/businessosPgChannelStore');
 const {createBusinessosAuthorizationAdapter}=require('../src/businessosAuthorizationAdapter');
 const {createR11FencedAuthorization}=require('../src/businessosR11FencedAuthorization');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
-const REQUEST=n=>'KPR-'+n.repeat(32);
+const REQUEST=n=>'KPR-'+'F'.repeat(31)+n;
 const PAYER='waba-payer-r11',OTHER='waba-attacker-r11',FROM='5215555550002';
 const TENANT='tenant-businessos-r11',CUSTOMER='canonical-customer-r11';
 const FRAUD='11111111-2222-4333-8444-555555555555';
@@ -227,7 +227,7 @@ pgTest('R11 DECLINED is recorded but never leads to retries or PAID',async()=>{
 });
 pgTest('R11 crash/failure inside reservation transaction rolls back BOTH tables, zero POST',async()=>{
  const id=await setup('8'),f=fixture();
- await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=$$KPR-88888888888888888888888888888888$$ THEN RAISE EXCEPTION 'forced rollback'; END IF; RETURN NEW; END; $$");
+ await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id LIKE 'KPR-%8' THEN RAISE EXCEPTION 'forced rollback'; END IF; RETURN NEW; END; $$");
  await pool.query('CREATE TRIGGER r11_test_insert BEFORE INSERT ON waba_channel.payment_authorization_handoffs FOR EACH ROW EXECUTE FUNCTION waba_channel.r11_fail_test()');
  try{
   assert.equal((await f.flow.authorizeOnce(args(id))).state,'DB_UNAVAILABLE_NO_EFFECT');
@@ -243,7 +243,7 @@ pgTest('R11 crash/failure inside reservation transaction rolls back BOTH tables,
 });
 pgTest('R11 crash after successful fake Payment POST cannot re-dispatch',async()=>{
  const id=await setup('9'),f=fixture();
- await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_finalize() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=$$KPR-99999999999999999999999999999999$$ AND NEW.outcome<> 'UNKNOWN_HOLD' THEN RAISE EXCEPTION 'post-dispatch write failure'; END IF; RETURN NEW; END; $$");
+ await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_finalize() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id LIKE 'KPR-%9' AND NEW.outcome<> 'UNKNOWN_HOLD' THEN RAISE EXCEPTION 'post-dispatch write failure'; END IF; RETURN NEW; END; $$");
  await pool.query('CREATE TRIGGER r11_test_finalize BEFORE UPDATE ON waba_channel.payment_authorization_handoffs FOR EACH ROW EXECUTE FUNCTION waba_channel.r11_fail_finalize()');
  try{
   assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
