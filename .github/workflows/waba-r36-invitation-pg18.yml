@@ -1,0 +1,46 @@
+name: WABA R36 Focused PostgreSQL18 Invitation Claims
+on:
+  pull_request:
+    branches:
+      - feature/waba-r35-pg-invitation-claim-20261029
+    paths:
+      - 'src/wabaPgInvitations.js'
+      - 'db/waba-r35-invitations.sql'
+      - 'tests/waba-r35-pg-invitations.test.js'
+      - 'tests/waba-r36-invitation-restart.test.js'
+      - '.github/workflows/waba-r36-invitation-pg18.yml'
+permissions:
+  contents: read
+jobs:
+  invitation-pg18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_r36
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: waba_r36
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U waba_r36 -d waba_r36"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_r36:offline_only@127.0.0.1:5432/waba_r36
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Original R35/R36 single-threaded PostgreSQL18 regressions
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --test --test-concurrency=1 tests/waba-r35-pg-invitations.test.js tests/waba-r36-invitation-restart.test.js
