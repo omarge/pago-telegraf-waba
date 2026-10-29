@@ -44,6 +44,8 @@ jobs:
       - name: Contract hashes and complete PG18 regression
         run: |
           npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
           node --check src/businessosR12CanonicalWireGate.js
           node --check src/businessosR12CanonicalCaptureInbox.js
           node --test tests/*.test.js
