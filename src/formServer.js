@@ -11,6 +11,7 @@ const PUBLIC_KEY = process.env.OPENPAY_PUBLIC_KEY || '';
 function createFormApp({paymentStore=store,accountRouter=createAccountRouter(),
   messenger={sendMessage},charge=openpayCharge,merchant=MERCHANT,privateKey=PRIVATE_KEY,
   legacyChargeEnabled=false,
+  durableInvitations=null,
   showSavedCardOption=process.env.WABA_SAVED_CARD_PAY_SANDBOX === '1' &&
     process.env.WABA_CARD_ENROLL_SANDBOX === '1'}={}) {
   const app = express();
@@ -19,7 +20,17 @@ function createFormApp({paymentStore=store,accountRouter=createAccountRouter(),
   // Account microapps remain separate from existing financial endpoints.
   app.use('/pay/app', accountRouter);
 
-  app.get('/pay/request/:token', (req, res) => {
+  app.get('/pay/request/:token', async (req, res) => {
+    if(durableInvitations){
+      let outcome;
+      try{outcome=await durableInvitations.claim({token:req.params.token});}
+      catch(_e){return res.status(503).send('Solicitud temporalmente no disponible.');}
+      if(outcome?.state==='DB_UNAVAILABLE_HOLD')return res.status(503).send('Solicitud temporalmente no disponible.');
+      if(outcome?.state!=='CLAIMED')return res.status(404).send('Enlace inválido o expirado.');
+      const amountText=(outcome.amountCents/100).toFixed(2);
+      res.set('Content-Type','text/html; charset=utf-8');
+      return res.send(paymentPage(outcome.requestId,outcome.amountCents,amountText,outcome.requesterId,showSavedCardOption,legacyChargeEnabled));
+    }
     const inv = paymentStore.consumeInvite(req.params.token);
     if (!inv) {
       return res.status(404).send('Enlace inválido o expirado.');
