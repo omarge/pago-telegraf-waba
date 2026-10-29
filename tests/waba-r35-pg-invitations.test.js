@@ -25,7 +25,7 @@ pgTest('R35 missing or expired invitation never creates a request',async()=>{
   assert.equal((await invites.claim({token:'A'.repeat(32)})).state,'NOT_ELIGIBLE_HOLD');
   const issued=await invites.issue({requesterId:'521555000001',amountCents:250});
   assert.equal(issued.state,'ISSUED');
-  await pool.query('UPDATE waba_channel.invitation_claims SET expires_at=clock_timestamp()-interval \'1 second\' WHERE token_sha256=$1',
+  await pool.query('UPDATE waba_channel.invitation_claims SET created_at=clock_timestamp()-interval \'2 days\', expires_at=clock_timestamp()-interval \'1 day\' WHERE token_sha256=$1',
    [require('node:crypto').createHash('sha256').update(issued.token).digest('hex')]);
   assert.equal((await invites.claim({token:issued.token})).state,'NOT_ELIGIBLE_HOLD');
  }finally{await pool.end();}
