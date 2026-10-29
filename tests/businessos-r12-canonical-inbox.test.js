@@ -43,7 +43,7 @@ function wire(intent,attempt,{minor='12.75',tenant=TENANT,occurred='2026-10-28T2
  };
 }
 async function setup(outcome='AUTHORIZED_PENDING_CAPTURE'){
- const i=++n,id='KPR-'+i.toString(16).toUpperCase().padStart(32,'0');
+ const i=++n,id='KPR-'+'C'.repeat(24)+i.toString(16).toUpperCase().padStart(8,'0');
  const intent='waba-int-'+i,attempt='waba-att-'+i,key='waba-r12-canonical-key-'+i;
  await pool.query(
   'INSERT INTO waba_channel.requests (request_id,requester_wa_id,amount_cents,payer_account_id) '+
