@@ -11,6 +11,9 @@ function durableMode(env={}){
 }
 async function createDurableIngress({env=process.env,PoolClass}={}){
  if(!durableMode(env))return null;
+ // Strict BusinessOS ingress cannot coexist with the legacy direct PSP charge.
+ if(env.WABA_SAVED_CARD_PAY_SANDBOX==='1')
+  throw Error('WABA_DURABLE_INGRESS_DIRECT_PSP_CONFLICT');
  const url=env.WABA_CHANNEL_PG_URL,secret=env.WABA_APP_SECRET,key=env.WABA_INBOX_AES256_KEY_HEX;
  if(typeof url!=='string'||!/^postgres(?:ql)?:\/\//.test(url)||
     typeof secret!=='string'||secret.length<16||
