@@ -105,6 +105,8 @@ pgTest('R11 live-eligible fake authority creates both fence rows before single P
  assert.equal(handoff.tenant_id,TENANT);
  assert.equal(handoff.customer_id,CUSTOMER);
  assert.equal(handoff.fraud_assessment_id,FRAUD);
+ assert.equal(handoff.authority_fingerprint,
+  evidence({id,amount:1275}).paymentMethodBindingDigest);
  assert.equal(Number(handoff.amount_cents),1275);
  assert.equal(handoff.payer_account_id,PAYER);
  assert.equal(handoff.outcome,'AUTHORIZED_PENDING_CAPTURE');
@@ -275,6 +277,18 @@ pgTest('H2: a pre-execution rejection carrying a foreign intent stays UNKNOWN',a
   }})});
   assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
   assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+});
+
+pgTest('H2: real pre-execution rejection without execution IDs is recorded',async()=>{
+ const id=await setup('AE');
+ const f=fixture({send:async()=>({httpStatus:422,body:{
+  status:'PRE_EXECUTION_FAILED'
+ }})});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'PRE_EXECUTION_FAILED');
+ assert.equal((await row(id)).outcome,'PRE_EXECUTION_FAILED');
+ assert.equal(f.calls.transport,1);
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+ assert.equal(f.calls.transport,1);
 });
 
 pgTest('R11 crash/failure inside reservation transaction rolls back BOTH tables, zero POST',async()=>{
