@@ -3,17 +3,7 @@ on:
   push:
     branches:
       - feature/waba-businessos-r11-payment-fenced-authorization-20261028
-  pull_request:
-    paths:
-      - 'src/businessosR11FencedAuthorization.js'
-      - 'src/businessosMethodBinding.js'
-      - 'src/businessosCanonicalEvidenceGate.js'
-      - 'src/businessosCanonicalFraud.js'
-      - 'tests/businessos-r10-canonical-fraud.test.js'
-      - 'db/waba-r11-channel.sql'
-      - 'tests/businessos-r11-financial-handoff.test.js'
-      - 'tests/pgMigrations.js'
-      - '.github/workflows/waba-businessos-r11-financial.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
