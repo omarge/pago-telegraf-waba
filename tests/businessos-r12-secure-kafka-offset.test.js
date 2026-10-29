@@ -235,3 +235,36 @@ pgTest('R12 Kafka crash after candidate commit before audit replays safely witho
  assert.equal(await count('canonical_capture_candidates',f.requestId),1);
  await c.stop();
 });
+
+pgTest('R20-B same PaymentIntent authorized on another attempt blocks capture before inbox or Kafka ACK',async()=>{
+ const a=await setup(),b=await setup();
+ await pool.query('UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET businessos_intent_id=$1 WHERE request_id=$2',
+  [a.intent,b.requestId]);
+ const fake=fakeKafka(),c=createR12SecuredKafkaConsumer({
+  enabled:true,pool,config:cfg(),kafkaFactory:fake.factory});
+ await c.start();
+ const before=await count('canonical_capture_candidates',a.requestId);
+ const message=record(a.intent,a.attempt,{offset:'160'});
+ await assert.rejects(()=>fake.state.callback(message),/HELD_NO_OFFSET_COMMIT/);
+ assert.equal(fake.state.commits.length,0);
+ assert.equal(await count('canonical_capture_candidates',a.requestId),before);
+ const saved=await pool.query('SELECT count(*)::int AS n '+
+  'FROM waba_channel.canonical_kafka_ingress '+
+  'WHERE topic=$1 AND partition_id=0 AND record_offset=160',[TOPIC]);
+ assert.equal(saved.rows[0].n,0);
+ await c.stop();
+});
+pgTest('R20-B foreign tenant same intent does not block authorized local capture',async()=>{
+ const a=await setup(),b=await setup();
+ await pool.query('UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET tenant_id=$1,businessos_intent_id=$2 WHERE request_id=$3',
+  ['foreign-r20-tenant',a.intent,b.requestId]);
+ const fake=fakeKafka(),c=createR12SecuredKafkaConsumer({
+  enabled:true,pool,config:cfg(),kafkaFactory:fake.factory});
+ await c.start();
+ await fake.state.callback(record(a.intent,a.attempt,{offset:'161'}));
+ assert.deepEqual(fake.state.commits.map(x=>x[0].offset),['162']);
+ assert.equal(await count('canonical_capture_candidates',a.requestId),1);
+ await c.stop();
+});
