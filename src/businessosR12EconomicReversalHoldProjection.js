@@ -1,4 +1,5 @@
 'use strict';
+const crypto=require('node:crypto');
 // R12-E: read-only economic contradiction/reversal projection on persisted
 // WABA canonical evidence. NEVER an authoritative Payment read API.
 // No PAID, receipt, ledger mutation, Kafka commit, PSP or Meta effects.
@@ -56,6 +57,15 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     'disposition,record_offset,partition_id FROM waba_channel.canonical_kafka_ingress '+
     'WHERE tenant_id=$1 AND payment_intent_id=$2 ORDER BY created_at,event_id',
     [h.tenant_id,h.businessos_intent_id]);
+   // An unacknowledged poison/foreign event may contain a financial fact
+   // missing from the accepted inbox. Its Kafka key is already hashed by
+   // the HOLD journal; compare hashes, never persist or expose the raw key.
+   const kafkaKey=h.tenant_id+'|'+h.businessos_intent_id;
+   const keyDigest=crypto.createHash('sha256').update(kafkaKey,'utf8').digest('hex');
+   const held=await c.query(
+    'SELECT 1 FROM waba_channel.canonical_kafka_holds '+
+    "WHERE topic='businessos.payment.events.v1' AND key_sha256=$1 LIMIT 1",
+    [keyDigest]);
    const candidates=await c.query(
     'SELECT event_id,payload_sha256,payment_attempt_id,amount_cents,currency '+
     'FROM waba_channel.canonical_capture_candidates '+
@@ -83,6 +93,7 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     seen.set(e.event_id,e);
    }
    if(!allFenced||collision)state='CANONICAL_CONFLICT_HOLD';
+   else if(held.rowCount>0)state='INCOMPLETE_INGRESS_HOLD';
    else if([...THREATS].some(x=>kinds.has(x)))
     state='REVERSAL_UNKNOWN_OR_FAILURE_HOLD';
    else if(candidates.rowCount!==1)
