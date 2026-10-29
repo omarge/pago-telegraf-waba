@@ -1,0 +1,59 @@
+name: WABA R12-E Economic Reversals & UNKNOWN No-PAID
+on:
+  push:
+    branches:
+      - feature/waba-r12e-financial-reversal-hold-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR12EconomicReversalHoldProjection.js'
+      - 'tests/businessos-r12-economic-reversal-hold.test.js'
+      - '.github/workflows/waba-businessos-r12e-reversals.yml'
+permissions:
+  contents: read
+jobs:
+  full-pg18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: r12e
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: r12e_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U r12e -d r12e_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://r12e:offline_only@127.0.0.1:5432/r12e_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Complete offline WABA regression on PG18
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
+          node --test tests/*.test.js
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read-only projection safety and syntax
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosR12EconomicReversalHoldProjection.js
+          node --test tests/businessos-r12-economic-reversal-hold.test.js
