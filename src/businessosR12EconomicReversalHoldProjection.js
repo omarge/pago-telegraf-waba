@@ -52,6 +52,20 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     await c.query('COMMIT');active=false;
     return {state:'HANDOFF_NOT_VALID_HOLD',isPaid:false};
    }
+   // One payment intent cannot be the source of two separately authorized
+   // WABA requests. Kafka's ingress lookup already holds on ambiguity, but
+   // the read-side snapshot must independently recheck historical bindings.
+   const bindings=await c.query(
+    'SELECT request_id FROM waba_channel.payment_authorization_handoffs '+
+    'WHERE tenant_id=$1 AND businessos_intent_id=$2 '+
+    "AND outcome='AUTHORIZED_PENDING_CAPTURE' LIMIT 2",
+    [h.tenant_id,h.businessos_intent_id]);
+   if(bindings.rowCount!==1||bindings.rows[0].request_id!==requestId){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'AMBIGUOUS_PAYMENT_INTENT_BINDING_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+   }
    // Tenant/intent scope intentionally includes ALL attempts. A refund or
    // UNKNOWN on any attempt must not be concealed by a matching capture row.
    const events=await c.query(
@@ -80,6 +94,36 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     'tenant_id,payment_intent_id '+
     'FROM waba_channel.canonical_capture_candidates '+
     'WHERE request_id=$1',[requestId]);
+   // An event ID is a global canonical business-fact identity, not merely
+   // a tenant-local Kafka delivery identifier. The source inbox may be
+   // historically inconsistent even if today's writer rejects new reuse.
+   // Compare against the candidate's OWN identity. The handoff-attempt
+   // comparison happens later and retains its specific competing-capture HOLD.
+   if(candidates.rowCount===1){
+    // A corrupted candidate's tenant/intent is an R17-B handoff mismatch,
+    // NOT evidence of a foreign canonical event ID. Preserve precise HOLD.
+    if(candidates.rows[0].tenant_id!==h.tenant_id||
+       candidates.rows[0].payment_intent_id!==h.businessos_intent_id){
+     await c.query('COMMIT');active=false;
+     return Object.freeze({state:'CAPTURE_EVIDENCE_MISMATCH_HOLD',
+      isPaid:false,isFinal:false,isReconciled:false,
+      isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+    }
+    const captureId=candidates.rows[0].event_id;
+    const foreign=await c.query(
+     'SELECT 1 FROM waba_channel.canonical_kafka_ingress '+
+     'WHERE event_id=$1 AND (tenant_id<>$2 OR payment_intent_id<>$3 '+
+     'OR payment_attempt_id<>$4) LIMIT 1',
+     [captureId,candidates.rows[0].tenant_id,
+      candidates.rows[0].payment_intent_id,
+      candidates.rows[0].payment_attempt_id]);
+    if(foreign.rowCount>0){
+     await c.query('COMMIT');active=false;
+     return Object.freeze({state:'CROSS_SCOPE_EVENT_ID_REUSE_HOLD',
+      isPaid:false,isFinal:false,isReconciled:false,
+      isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+    }
+   }
    await c.query('COMMIT');active=false;
    const record=events.rows;
    const kinds=new Set(record.map(x=>x.event_type));
