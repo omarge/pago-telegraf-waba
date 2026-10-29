@@ -43,6 +43,9 @@ function createR11OfflineInboundPipeline({pool,encryptionKey,enabled=false}={}){
     'JOIN waba_channel.signed_envelopes e ON e.envelope_digest=r.source_envelope_digest '+
     'WHERE r.source_envelope_digest=$1 AND r.event_kind=$2 '+
     'AND r.route_code=$3 AND e.normalized_at IS NOT NULL AND e.quarantined_at IS NULL '+
+    'AND NOT EXISTS (SELECT 1 FROM waba_channel.safe_menu_outbox o '+
+    'WHERE o.phone_number_id=r.phone_number_id AND o.message_id=r.message_id '+
+    'AND o.event_kind=r.event_kind) '+
     'ORDER BY r.created_at,r.phone_number_id,r.message_id LIMIT $4',
     [envelopeDigest,'MESSAGE','MENU_CANDIDATE',LIMIT]);
   }catch(_e){return {state:'RETRYABLE_NO_EFFECT'};}
