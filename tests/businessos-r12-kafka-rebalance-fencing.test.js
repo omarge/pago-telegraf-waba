@@ -195,3 +195,32 @@ pgTest('R12 lost Kafka commit ACK replays durable fact without second financial 
  assert.equal(saved.rows[0].n,1);
  await c.stop();
 });
+
+pgTest('R18-A same event ID: one matching row cannot hide a conflicting row at another offset',async()=>{
+ const fk=fakeKafka(),c=consumer(fk);
+ assert.equal((await c.start()).state,
+  'REBALANCE_FENCED_CONSUMER_STARTED_CANDIDATES_ONLY');
+ const msg=record('r18-conflicting-history',2070);
+ await fk.batch([msg]).run();
+ assert.deepEqual(fk.state.commits.map(x=>x[0].offset),['2071']);
+ // A legacy import/corrupt outbox copy can leave multiple deliveries with
+ // one event ID and conflicting payload. LIMIT 1 saw the matching row only.
+ const seeded=await pool.query(
+  'INSERT INTO waba_channel.canonical_kafka_ingress '+
+  '(event_id,payload_sha256,topic,partition_id,record_offset,event_type,'+
+  'tenant_id,payment_intent_id,payment_attempt_id,disposition) '+
+  'SELECT event_id,$1,topic,92,2071,event_type,tenant_id,payment_intent_id,'+
+  'payment_attempt_id,disposition FROM waba_channel.canonical_kafka_ingress '+
+  'WHERE topic=$2 AND partition_id=91 AND record_offset=2070',
+  ['f'.repeat(64),TOPIC]);
+ assert.equal(seeded.rowCount,1);
+ const replay={...msg,offset:'2072'};
+ await assert.rejects(()=>fk.batch([replay]).run(),
+  /R12_RECORD_HELD_NO_OFFSET_COMMIT/);
+ assert.deepEqual(fk.state.commits.map(x=>x[0].offset),['2071']);
+ const unacked=await pool.query(
+  'SELECT count(*)::int AS n FROM waba_channel.canonical_kafka_ingress '+
+  'WHERE topic=$1 AND partition_id=91 AND record_offset=2072',[TOPIC]);
+ assert.equal(unacked.rows[0].n,0);
+ await c.stop();
+});
