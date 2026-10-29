@@ -41,6 +41,11 @@ test('H3 invalid credentials refuse bootstrap before any DB connection',async()=
  }
  assert.equal(connected,0);
 });
+test('H3 strict BusinessOS ingress refuses the legacy direct PSP saved-card path',async()=>{
+ await assert.rejects(createDurableIngress({env:env({
+  WABA_SAVED_CARD_PAY_SANDBOX:'1'
+ })}),/DIRECT_PSP_CONFLICT/);
+});
 test('H3 missing schema prevents startup; no Meta HTTP listener opened',async()=>{
  let closed=0;
  class MissingSchemaPool{
