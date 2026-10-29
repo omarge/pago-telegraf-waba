@@ -2,7 +2,21 @@
 // Optional R14 live Kafka metadata / ACL *inspection* only.
 // NEVER mounted in WABA runtime, never starts a consumer or producer,
 // never reads messages, commits offsets, or sends financial notifications.
-const {validateSecureKafkaConfig}=require('./businessosR12SecuredKafkaConsumer');
+// Keep metadata-only inspection zero-dependency in dark mode and offline CI.
+// R12's consumer pulls in protobufjs; importing it here would inflate a
+// five-second security job into an unnecessary application install.
+const CLIENT=/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+const BROKER=/^[A-Za-z0-9][A-Za-z0-9.-]{0,251}:[1-9][0-9]{1,4}$/;
+function validateProbeConfig(config){
+ return !!config&&typeof config==='object'&&
+  Array.isArray(config.brokers)&&config.brokers.length>=1&&
+  config.brokers.length<=8&&config.brokers.every(x=>
+   typeof x==='string'&&BROKER.test(x))&&
+  CLIENT.test(config.clientId||'')&&CLIENT.test(config.groupId||'')&&
+  typeof config.username==='string'&&config.username.length>=3&&
+  typeof config.password==='string'&&config.password.length>=16&&
+  config.topic==='businessos.payment.events.v1';
+}
 const TOPIC='businessos.payment.events.v1';
 const SAFE_STATES=new Set([
  'DISABLED_NO_NETWORK','CONFIG_REJECTED_NO_NETWORK',
@@ -33,7 +47,7 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
     !ca.every(x=>typeof x==='string'&&x.includes('BEGIN CERTIFICATE')&&
       x.includes('END CERTIFICATE')&&x.length<16384)))
    return response('CONFIG_REJECTED_NO_NETWORK');
-  if(!validateSecureKafkaConfig(config)||
+  if(!validateProbeConfig(config)||
      config?.ssl?.rejectUnauthorized===false||
      config?.skipTlsVerification===true||
      config?.sasl?.mechanism&&config.sasl.mechanism!=='scram-sha-512')
