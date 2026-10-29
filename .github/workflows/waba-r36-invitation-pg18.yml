@@ -42,5 +42,5 @@ jobs:
           node-version: '24'
       - name: Original R35/R36 single-threaded PostgreSQL18 regressions
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --ignore-scripts --no-audit --no-fund
           node --test --test-concurrency=1 tests/waba-r35-pg-invitations.test.js tests/waba-r36-invitation-restart.test.js
