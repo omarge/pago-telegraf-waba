@@ -58,6 +58,19 @@ function createWebhook({messenger=liveMessenger,store=liveStore,log=console,base
     await messenger.sendMessage(from,'Monto inválido. Envía un número (1000 = $10.00).');
     return;
    }
+   const capRaw=process.env.WABA_MAX_INVITE_CENTS;
+   if(capRaw!==undefined){
+    const cap=/^[1-9][0-9]*$/.test(capRaw)?Number(capRaw):NaN;
+    if(!Number.isSafeInteger(cap)){
+     log.error('Invalid WABA_MAX_INVITE_CENTS configuration');
+     await messenger.sendMessage(from,'No es posible generar enlaces en este momento.');
+     return;
+    }
+    if(amount>cap){
+     await messenger.sendMessage(from,'El importe supera el límite permitido.');
+     return;
+    }
+   }
    const token=store.createInvite(from,amount);
    store.conv.delete(from);
    const base=String(baseUrl||process.env.PUBLIC_BASE_URL||'https://pagos.kashbit.bond').replace(/\/$/,'');
