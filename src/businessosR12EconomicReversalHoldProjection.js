@@ -67,7 +67,8 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     "WHERE topic='businessos.payment.events.v1' AND key_sha256=$1 LIMIT 1",
     [keyDigest]);
    const candidates=await c.query(
-    'SELECT event_id,payload_sha256,payment_attempt_id,amount_cents,currency '+
+    'SELECT event_id,payload_sha256,payment_attempt_id,amount_cents,currency,'+
+    'tenant_id,payment_intent_id '+
     'FROM waba_channel.canonical_capture_candidates '+
     'WHERE request_id=$1',[requestId]);
    await c.query('COMMIT');active=false;
@@ -92,7 +93,14 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     ))collision=true;
     seen.set(e.event_id,e);
    }
+   // Same event_id+payload replay at different Kafka offsets is allowed,
+   // but competing economic capture facts on one payment intent are NOT.
+   const captured=record.filter(e=>e.event_type==='PaymentCaptured');
+   const competingCapture=captured.some(e=>
+    e.payment_attempt_id!==h.businessos_attempt_id)||
+    new Set(captured.map(e=>e.event_id)).size>1;
    if(!allFenced||collision)state='CANONICAL_CONFLICT_HOLD';
+   else if(competingCapture)state='COMPETING_CAPTURE_ATTEMPTS_HOLD';
    else if(held.rowCount>0)state='INCOMPLETE_INGRESS_HOLD';
    else if([...THREATS].some(x=>kinds.has(x)))
     state='REVERSAL_UNKNOWN_OR_FAILURE_HOLD';
@@ -108,6 +116,8 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
      e.disposition==='CAPTURE_CANDIDATE_ONLY');
     state=matches.length>0&&
       v.payment_attempt_id===h.businessos_attempt_id&&
+      v.tenant_id===h.tenant_id&&
+      v.payment_intent_id===h.businessos_intent_id&&
       validCents(v.amount_cents)===amount&&v.currency==='MXN'?
      'CAPTURE_CANDIDATE_RECONCILIATION_PENDING':
      'CAPTURE_EVIDENCE_MISMATCH_HOLD';
