@@ -197,3 +197,26 @@ pgTest('R17-B canonical candidate tenant and intent must match R11 authorized ha
  assert.equal(r.state,'CAPTURE_EVIDENCE_MISMATCH_HOLD');
  assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
 });
+
+pgTest('R18-B 4097 replayed economic facts cannot cause unbounded candidate read or false clean status',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,
+  'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ // Bulk rows exercise PostgreSQL query LIMIT without 4097 round trips.
+ // Every row is scoped to one legitimate tenant/intent but is NOT a capture.
+ const seed=await pool.query(
+  'INSERT INTO waba_channel.canonical_kafka_ingress '+
+  '(event_id,payload_sha256,topic,partition_id,record_offset,event_type,'+
+  'tenant_id,payment_intent_id,payment_attempt_id,disposition) '+
+  "SELECT 'payment-engine:r18b-noise-'||g.i||':PaymentAuthorized',"+
+  "'e'||repeat('0',63),$1,85,1000000+g.i,'PaymentAuthorized',"+
+  "$2,$3,'r18b-noise-attempt','NON_CAPTURE_HOLD' "+
+  'FROM generate_series(1,4096) AS g(i)',
+  [TOPIC,TENANT,f.intent]);
+ assert.equal(seed.rowCount,4096);
+ const r=await assess(f);
+ assert.equal(r.state,'CANONICAL_HISTORY_LIMIT_HOLD');
+ assert.equal(r.isPaid,false);
+ assert.equal(r.canSendReceipt,false);
+ assert.equal(r.isReconciled,false);
+});
