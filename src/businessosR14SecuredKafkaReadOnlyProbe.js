@@ -28,6 +28,11 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
     (typeof kafkaFactory!=='function'||
      !['child-v8','child-process'].includes(process.env.NODE_TEST_CONTEXT)))
    return response('TEST_FACTORY_REFUSED_NO_NETWORK');
+  const ca=config?.tlsCaPem;
+  if(ca!==undefined&&(!Array.isArray(ca)||ca.length<1||ca.length>5||
+    !ca.every(x=>typeof x==='string'&&x.includes('BEGIN CERTIFICATE')&&
+      x.includes('END CERTIFICATE')&&x.length<16384)))
+   return response('CONFIG_REJECTED_NO_NETWORK');
   if(!validateSecureKafkaConfig(config)||
      config?.ssl?.rejectUnauthorized===false||
      config?.skipTlsVerification===true||
@@ -45,10 +50,7 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
     sasl:{mechanism:'scram-sha-512',
      username:config.username,password:config.password}
    };
-   if(Array.isArray(config.tlsCaPem)&&
-      config.tlsCaPem.length>0&&config.tlsCaPem.every(x=>
-       typeof x==='string'&&x.includes('BEGIN CERTIFICATE')&&x.length<16384))
-    settings.ssl.ca=config.tlsCaPem;
+   if(ca!==undefined)settings.ssl.ca=ca;
    const kafka=new Kafka(settings);
    admin=kafka.admin();
    await admin.connect();
