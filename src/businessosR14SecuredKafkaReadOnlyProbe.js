@@ -22,6 +22,7 @@ const SAFE_STATES=new Set([
  'DISABLED_NO_NETWORK','CONFIG_REJECTED_NO_NETWORK',
  'TEST_FACTORY_REFUSED_NO_NETWORK','BROKER_CONNECT_OR_METADATA_HOLD',
  'TOPIC_NOT_FOUND_HOLD','ACL_INSPECTION_UNAVAILABLE_HOLD',
+ 'GROUP_ACL_INSPECTION_UNAVAILABLE_HOLD','ACL_POLICY_EMPTY_HOLD',
  'BROKER_METADATA_OBSERVED_PENDING_INDEPENDENT_AUDIT'
 ]);
 function response(state,extra={}){
@@ -73,33 +74,56 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
    const topic=(md?.topics||[]).find(x=>x.name===TOPIC);
    if(!topic||!Array.isArray(topic.partitions)||!topic.partitions.length)
     return response('TOPIC_NOT_FOUND_HOLD');
-   // ACL listing is often deliberately forbidden to a least-privilege
-   // consumer. No response does NOT mean permission was granted.
-   let acl;
-   try{
-    const C=kafkaFactory?{
-     AclResourceTypes:{TOPIC:2},AclOperationTypes:{ANY:1},
-     AclPermissionTypes:{ANY:1},ResourcePatternTypes:{ANY:1}
-    }:kafkaLib;
-    acl=await admin.describeAcls({
-     resourceName:TOPIC,resourceType:C.AclResourceTypes.TOPIC,
+   // Both topic AND consumer group require separate ACL evidence.
+   // DescribeAcls needs permission and may legitimately fail for the
+   // least-privileged WABA reader: that always means HOLD, not a pass.
+   const C=kafkaFactory?{
+    AclResourceTypes:{TOPIC:2,GROUP:3},AclOperationTypes:{ANY:1},
+    AclPermissionTypes:{ANY:1},ResourcePatternTypes:{MATCH:2}
+   }:kafkaLib;
+   async function aclFor(resourceType,resourceName){
+    return admin.describeAcls({
+     resourceName,resourceType,
      operation:C.AclOperationTypes.ANY,
      permissionType:C.AclPermissionTypes.ANY,
-     resourcePatternTypeFilter:C.ResourcePatternTypes.ANY
+     resourcePatternTypeFilter:C.ResourcePatternTypes.MATCH
     });
-   }catch(_err){
+   }
+   let topicAcls;
+   try{topicAcls=await aclFor(C.AclResourceTypes.TOPIC,TOPIC);}
+   catch(_err){
     return response('ACL_INSPECTION_UNAVAILABLE_HOLD',{
      topicMetadataObserved:true,partitionCount:topic.partitions.length
     });
    }
-   if(!Array.isArray(acl?.resources))
+   if(!Array.isArray(topicAcls?.resources))
     return response('ACL_INSPECTION_UNAVAILABLE_HOLD',{
      topicMetadataObserved:true,partitionCount:topic.partitions.length
     });
-   // Do not export ACL principals/hosts, TLS certs, secrets or broker IDs.
+   let groupAcls;
+   try{groupAcls=await aclFor(C.AclResourceTypes.GROUP,config.groupId);}
+   catch(_err){
+    return response('GROUP_ACL_INSPECTION_UNAVAILABLE_HOLD',{
+     topicMetadataObserved:true,partitionCount:topic.partitions.length,
+     topicAclDescriptionReturned:true
+    });
+   }
+   if(!Array.isArray(groupAcls?.resources))
+    return response('GROUP_ACL_INSPECTION_UNAVAILABLE_HOLD',{
+     topicMetadataObserved:true,partitionCount:topic.partitions.length,
+     topicAclDescriptionReturned:true
+    });
+   // No ACL entries means there is no self-observed positive evidence.
+   // Do not claim an ACL passed, especially under broker default-allow
+   // policies. Negative principal tests require independent UAT.
+   if(topicAcls.resources.length===0||groupAcls.resources.length===0)
+    return response('ACL_POLICY_EMPTY_HOLD',{
+     topicMetadataObserved:true,partitionCount:topic.partitions.length
+    });
+   // Never export ACL principal, host, credential, group, or raw policy.
    return response('BROKER_METADATA_OBSERVED_PENDING_INDEPENDENT_AUDIT',{
     topicMetadataObserved:true,partitionCount:topic.partitions.length,
-    aclDescriptionReturned:true
+    topicAclDescriptionReturned:true,groupAclDescriptionReturned:true
    });
   }catch(_err){
    return response('BROKER_CONNECT_OR_METADATA_HOLD');
