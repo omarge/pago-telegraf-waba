@@ -97,13 +97,17 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
    // An event ID is a global canonical business-fact identity, not merely
    // a tenant-local Kafka delivery identifier. The source inbox may be
    // historically inconsistent even if today's writer rejects new reuse.
+   // Compare against the candidate's OWN identity. The handoff-attempt
+   // comparison happens later and retains its specific competing-capture HOLD.
    if(candidates.rowCount===1){
     const captureId=candidates.rows[0].event_id;
     const foreign=await c.query(
      'SELECT 1 FROM waba_channel.canonical_kafka_ingress '+
      'WHERE event_id=$1 AND (tenant_id<>$2 OR payment_intent_id<>$3 '+
      'OR payment_attempt_id<>$4) LIMIT 1',
-     [captureId,h.tenant_id,h.businessos_intent_id,h.businessos_attempt_id]);
+     [captureId,candidates.rows[0].tenant_id,
+      candidates.rows[0].payment_intent_id,
+      candidates.rows[0].payment_attempt_id]);
     if(foreign.rowCount>0){
      await c.query('COMMIT');active=false;
      return Object.freeze({state:'CROSS_SCOPE_EVENT_ID_REUSE_HOLD',
