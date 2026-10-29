@@ -2,7 +2,6 @@
 // R11: OFFLINE ONLY. One durable WABA authorization handoff, no automatic retry.
 // The only external attempt is an injected adapter and ONLY after a PG COMMIT.
 // Not mounted by the WABA runtime. Never infer PaymentCapture/PAID from AUTHORIZED.
-const crypto=require('node:crypto');
 const {buildAuthorizationRequest}=require('./businessosAuthorizationAdapter');
 const {methodBindingDigest}=require('./businessosMethodBinding');
 const ORDER=/^KPR-[A-F0-9]{32}$/;
@@ -106,14 +105,8 @@ function createR11FencedAuthorization({
    authority=Object.freeze({...await resolveAuthority({request:record,accountId,evidence})});
    preflight=authorizeAuthority({authority,evidence,accountId,request:record,device});
   }catch(_e){return {state:'TRUSTED_MAPPING_UNVERIFIED'};}
-  const authorityFingerprint=crypto.createHash('sha256')
-   .update(JSON.stringify({
-    tenantId:authority.tenantId,customerId:authority.customerId,
-    fraudAssessmentId:authority.fraudAssessmentId,
-    paymentMethodReferenceProvider:authority.paymentMethodReferenceProvider,
-    paymentMethodReference:authority.paymentMethodReference,
-    amount:preflight.body.amount,requestId
-   })).digest('hex');
+  // Persist only the commitment to the exact method assessed by Fraud.
+  const authorityFingerprint=evidence.paymentMethodBindingDigest;
   const reserved=await failSafeTxn(async c=>{
    const rr=await c.query(
     'SELECT * FROM waba_channel.requests WHERE request_id=$1 FOR UPDATE',[requestId]);
