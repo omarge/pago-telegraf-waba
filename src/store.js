@@ -11,7 +11,7 @@ function newId() {
 }
 
 function createInvite(requesterId, amount) {
-  const token = crypto.randomBytes(6).toString('base64url');
+  const token = crypto.randomBytes(24).toString('base64url');
   invites.set(token, { requesterId, amount, created: Date.now() });
   return token;
 }
