@@ -125,6 +125,35 @@ pgTest('Pipeline concurrent callers and fresh pool cannot duplicate a menu inten
   assert.deepEqual(await counts(id),[1,1,1]);
  }finally{await fresh.end();}
 });
+pgTest('Pipeline bounded routing and menu cursor advances across 150 signed events',async()=>{
+ const makeChange=(offset,count)=>({field:'messages',value:{
+  metadata:{phone_number_id:PHONE},
+  messages:Array.from({length:count},(_,i)=>({
+   id:'wamid.pipe.bulk.'+String(offset+i).padStart(4,'0'),
+   from:FROM,type:'text',text:{body:'menu'}
+  }))
+ }});
+ const raw=Buffer.from(JSON.stringify({object:'whatsapp_business_account',entry:[{
+  changes:[makeChange(0,75),makeChange(75,75)]
+ }]}));
+ const h=digest(raw);
+ assert.equal((await ingress.persistSignedEnvelope({rawBody:raw,signature:sign(raw)})).state,'STORED');
+ const first=await pipeline.stageEnvelope({envelopeDigest:h});
+ assert.equal(first.state,'PARTIAL_OFFLINE_NO_DISPATCH');
+ assert.equal(first.routes,100);
+ assert.equal(first.menuIntents,100);
+ const next=await pipeline.stageEnvelope({envelopeDigest:h});
+ assert.equal(next.state,'STAGED_OFFLINE_NO_DISPATCH');
+ assert.equal(next.routes,50);
+ assert.equal(next.menuIntents,50);
+ const replay=await pipeline.stageEnvelope({envelopeDigest:h});
+ assert.deepEqual(replay,{
+  state:'STAGED_OFFLINE_NO_DISPATCH',routes:0,menuIntents:0,financialActions:0,metaSends:0
+ });
+ const count=await pool.query("SELECT count(*)::int AS n FROM waba_channel.safe_menu_outbox WHERE message_id LIKE 'wamid.pipe.bulk.%'");
+ assert.equal(count.rows[0].n,150);
+});
+
 pgTest('Pipeline corrupted ciphertext quarantines, never routes, never stages',async()=>{
  const id='wamid.pipe.bad.A008',h=await accept(id);
  await pool.query('UPDATE waba_channel.signed_envelopes SET ciphertext=set_byte(ciphertext,0,(get_byte(ciphertext,0)+1)%256) WHERE envelope_digest=$1',[h]);
