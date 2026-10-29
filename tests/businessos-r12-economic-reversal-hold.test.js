@@ -107,7 +107,9 @@ pgTest('R12-E orphan capture candidate, mismatched amount and foreign attempt al
   [g.intent]);
  assert.equal((await assess(g)).state,'CAPTURE_EVIDENCE_MISMATCH_HOLD');
  const h=await setup();await capture(h,{attempt:'foreign-r12e-attempt'});
- assert.equal((await assess(h)).state,'CAPTURE_EVIDENCE_MISMATCH_HOLD');
+ // A captured fact on another attempt is an explicit competing economic
+ // capture, not merely a generic candidate mismatch; both states are HOLD.
+ assert.equal((await assess(h)).state,'COMPETING_CAPTURE_ATTEMPTS_HOLD');
 });
 pgTest('R12-E no candidate, unknown handoff and cross-payer all HOLD',async()=>{
  const f=await setup();
