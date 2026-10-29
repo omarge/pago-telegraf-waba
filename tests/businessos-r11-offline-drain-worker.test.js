@@ -122,9 +122,14 @@ pgTest('Drain: twelve simultaneous callers, one durable menu; clean after restar
  const workers=Array.from({length:12},()=>createR11OfflineDrainWorker({
   pool,encryptionKey:KEY,enabled:true}));
  const results=await Promise.all(workers.map(w=>w.runOnce({envelopeDigest:h,limit:2})));
+ // A worker may legitimately observe IDLE once another instance has
+ // committed the entire envelope. Either outcome is safe; none may send.
  assert.ok(results.every(r=>[
-  'DRAINED_OFFLINE_NO_DISPATCH','RETRYABLE_NO_EFFECT'
- ].includes(r.state)));
+  'DRAINED_OFFLINE_NO_DISPATCH','MORE_WORK_OFFLINE_NO_DISPATCH',
+  'RETRYABLE_NO_EFFECT','IDLE_NO_EFFECT'
+ ].includes(r.state)),JSON.stringify(results));
+ assert.equal(results.reduce((n,r)=>n+(r.metaSends||0),0),0);
+ assert.equal(results.reduce((n,r)=>n+(r.financialActions||0),0),0);
  assert.deepEqual(await counts(id),[1,1,1]);
  const fresh=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:2});
  try{
