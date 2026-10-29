@@ -100,6 +100,15 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
    // Compare against the candidate's OWN identity. The handoff-attempt
    // comparison happens later and retains its specific competing-capture HOLD.
    if(candidates.rowCount===1){
+    // A corrupted candidate's tenant/intent is an R17-B handoff mismatch,
+    // NOT evidence of a foreign canonical event ID. Preserve precise HOLD.
+    if(candidates.rows[0].tenant_id!==h.tenant_id||
+       candidates.rows[0].payment_intent_id!==h.businessos_intent_id){
+     await c.query('COMMIT');active=false;
+     return Object.freeze({state:'CAPTURE_EVIDENCE_MISMATCH_HOLD',
+      isPaid:false,isFinal:false,isReconciled:false,
+      isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+    }
     const captureId=candidates.rows[0].event_id;
     const foreign=await c.query(
      'SELECT 1 FROM waba_channel.canonical_kafka_ingress '+
