@@ -1,0 +1,84 @@
+name: WABA R12 F+G Integrated Kafka Boundary and Source HOLD
+on:
+  push:
+    branches:
+      - feature/waba-r12fg-integrated-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR12*.js'
+      - 'tests/businessos-r12-*.test.js'
+      - '.github/workflows/waba-businessos-r12fg-integration.yml'
+permissions:
+  contents: read
+jobs:
+  pg18-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: r12fg
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: r12fg_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U r12fg -d r12fg_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://r12fg:offline_only@127.0.0.1:5432/r12fg_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Entire WABA PG18 offline adversarial regression
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
+          node --test tests/*.test.js
+  policy-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refuse plaintext transport in runtime; test-only permit, no DB
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --test tests/businessos-r12-kafka-test-factory-fence.test.js
+  cross-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: cross
+          POSTGRES_PASSWORD: offline_only
+          POSTGRES_DB: cross_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cross -d cross_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://cross:offline_only@127.0.0.1:5432/cross_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --test tests/businessos-r12-fg-hold-integration.test.js

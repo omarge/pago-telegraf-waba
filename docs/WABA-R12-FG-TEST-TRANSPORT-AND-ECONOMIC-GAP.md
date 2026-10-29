@@ -1,0 +1,11 @@
+# R12 F+G: Integration of Test Transport Guardrail + Economic Ingress Gap HOLD
+
+**Source lineage:** certified Draft PR #50 SHA `f14181222922a5061dee578f4a91f1683539928c` and certified sibling Draft PR #51 SHA `eae188e6531dd01aec086a356661c1a73f5c7c58`. New integration branch begins at #50 and carries byte-identical #51 source/test files. Neither sibling is merged.
+
+**R12-F** refuses injection of a test Kafka transport factory in an ordinary application process before a broker or PostgreSQL can be touched. Node `--test` fixtures may still use an explicitly fake Kafka transport. `NODE_TEST_CONTEXT` is a **misuse guardrail, not proof of trust** when someone controls process environment; strong production access controls must eliminate the test override from release artifacts and verify signed code + principal, TLS CA, SCRAM-512 and Kafka topic ACLs.
+
+**R12-G** extends the conservative `R12EconomicReversalHoldProjection`: inside an isolated PostgreSQL read-only REPEATABLE READ snapshot, hash the canonical `tenant|paymentIntentId` Kafka key and refuse to present a clean capture candidate if an unacknowledged event exists in `canonical_kafka_holds`. This closes the missing-event economic observation gap: a refund or UNKNOWN stuck on an unacknowledged Kafka record must not be silently treated as absent. It cannot prove source completeness when there is no observed HOLD.
+
+**New cross-file PostgreSQL 18 test** uses the actual HOLD journal interface, not a direct stub. It first records a candidate capture with matching owner event, shows `CAPTURE_CANDIDATE_RECONCILIATION_PENDING`, records a malformed financial event with the same Kafka key and `mayCommit=false`, then requires `INCOMPLETE_INGRESS_HOLD`, no PAID/receipt, and idempotent repeat observation. Three independent CI jobs certify full WABA regression, transport injection policy, and PG18 cross-gate, in parallel. Previous real Apache Kafka ephemeral functional CI remains independent.
+
+**Production:** `NO_GO`. No live broker TLS/SASL/ACL certification, no real provider-authoritative captured/reconciled state, no R13 receipt or Meta send, no paid state, no PSP effects, no main/master merge, no host1/.env/secrets or other repository changes. All changes confined to WABA GitHub Draft branch.

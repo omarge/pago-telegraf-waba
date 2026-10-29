@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {Pool}=require('pg');
+const crypto=require('node:crypto');
 const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createR12EconomicReversalHoldProjection}=
  require('../src/businessosR12EconomicReversalHoldProjection');
@@ -13,7 +14,8 @@ if(process.env.R4_POSTGRES_TEST_URL){
   pool=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:16});
   await applyTestChannelMigrations(pool,[
    'waba-r4-channel.sql','waba-r11-channel.sql',
-   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql']);
+   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql',
+   'waba-r12-kafka-holds.sql']);
  });
  after(async()=>{await pool.end();});
 }
@@ -120,4 +122,44 @@ test('R12-E database outage cannot return final or paid',async()=>{
  });
  const result=await projection.assess({requestId:'KPR-'+'F'.repeat(32),accountId:PAYER});
  assert.deepEqual(result,{state:'DB_UNAVAILABLE_HOLD',isPaid:false});
+});
+
+pgTest('R12-G withheld source delivery for same tenant/intent prevents apparent clean capture',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ const digest=crypto.createHash('sha256').update(TENANT+'|'+f.intent).digest('hex');
+ await pool.query(
+  'INSERT INTO waba_channel.canonical_kafka_holds '+
+  '(topic,partition_id,record_offset,payload_sha256,key_sha256,reason) '+
+  'VALUES($1,77,990101,$2,$3,$4)',
+  [TOPIC,'b'.repeat(64),digest,'UNVERIFIED_CANONICAL_HOLD']);
+ const got=await assess(f);
+ assert.equal(got.state,'INCOMPLETE_INGRESS_HOLD');
+ assert.equal(got.isPaid,false);
+ assert.equal(got.isReconciled,false);
+ assert.equal(got.canSendReceipt,false);
+});
+pgTest('R12-G unrelated tenant/key hold cannot veto another payer intent',async()=>{
+ const clean=await setup();await capture(clean);
+ const digest=crypto.createHash('sha256').update('other-tenant|'+clean.intent).digest('hex');
+ await pool.query('INSERT INTO waba_channel.canonical_kafka_holds '+
+  '(topic,partition_id,record_offset,payload_sha256,key_sha256,reason) '+
+  'VALUES($1,77,990102,$2,$3,$4)',
+  [TOPIC,'c'.repeat(64),digest,'UNVERIFIED_CANONICAL_HOLD']);
+ const r=await assess(clean);
+ assert.equal(r.state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ assert.equal(r.isPaid,false);
+});
+pgTest('R12-G repeated held deliveries remain HOLD without provider finality authority',async()=>{
+ const f=await setup();await capture(f);
+ const digest=crypto.createHash('sha256').update(TENANT+'|'+f.intent).digest('hex');
+ await pool.query('INSERT INTO waba_channel.canonical_kafka_holds '+
+  '(topic,partition_id,record_offset,payload_sha256,key_sha256,reason,observations) '+
+  'VALUES($1,77,990103,$2,$3,$4,12)',
+  [TOPIC,'d'.repeat(64),digest,'UNBOUND_OR_AMBIGUOUS_CAPTURE_HOLD']);
+ assert.equal((await assess(f)).state,'INCOMPLETE_INGRESS_HOLD');
+ await event(f,'PaymentRefunded');
+ const r=await assess(f);
+ assert.equal(r.isPaid,false);
+ assert.notEqual(r.state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
 });
