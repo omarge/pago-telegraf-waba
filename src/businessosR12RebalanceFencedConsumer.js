@@ -5,6 +5,8 @@ const {TOPIC,createR12CanonicalWireGate}=require('./businessosR12CanonicalWireGa
 const {createR12CanonicalCaptureInbox}=require('./businessosR12CanonicalCaptureInbox');
 const {createR12KafkaCommitProcessor}=require('./businessosR12KafkaCommitProcessor');
 const {validateSecureKafkaConfig}=require('./businessosR12SecuredKafkaConsumer');
+const {createR12KafkaHoldJournal,createR12HeldRecordProcessor}=
+ require('./businessosR12KafkaHoldJournal');
 function createR12RebalanceFencedConsumer({enabled=false,pool,config,kafkaFactory}={}){
  if(!pool||typeof pool.connect!=='function'||typeof pool.query!=='function'||
     (kafkaFactory!==undefined&&typeof kafkaFactory!=='function'))
@@ -14,6 +16,9 @@ function createR12RebalanceFencedConsumer({enabled=false,pool,config,kafkaFactor
   verifyTrustedTransport:async()=>connected});
  const inbox=createR12CanonicalCaptureInbox({enabled:true,pool,wireGate:gate});
  const processor=createR12KafkaCommitProcessor({enabled:true,pool,captureInbox:inbox});
+ // Every economic HOLD is diagnosed without granting offset-commit authority.
+ const holdJournal=createR12KafkaHoldJournal({enabled:true,pool});
+ const heldProcessor=createR12HeldRecordProcessor({processor,journal:holdJournal});
  const live=(generation,isRunning,isStale)=>
   connected&&generation===epoch&&isRunning()===true&&isStale()===false;
  async function stop(){
@@ -65,10 +70,8 @@ function createR12RebalanceFencedConsumer({enabled=false,pool,config,kafkaFactor
          (last!==null&&BigInt(message.offset)<=last))
        throw Error('R12_NON_MONOTONIC_OFFSET_HOLD');
       last=BigInt(message.offset);
-      const result=await processor.process({
-       topic:batch.topic,partition:batch.partition,
-       offset:message.offset,key:message.key,headers:message.headers,
-       value:message.value
+      const result=await heldProcessor.process({
+       topic:batch.topic,partition:batch.partition,message
       });
       if(result?.mayCommit!==true)
        throw Error('R12_RECORD_HELD_NO_OFFSET_COMMIT');
@@ -99,7 +102,7 @@ function createR12RebalanceFencedConsumer({enabled=false,pool,config,kafkaFactor
    return {state:'KAFKA_START_FAILED_NO_EFFECT'};
   }
  }
- return Object.freeze({start,stop,isEnabled:enabled===true,
+ return Object.freeze({start,stop,listHeld:holdJournal.listHeld,isEnabled:enabled===true,
   isMountedByWaba:false,isRealBrokerCertified:false,
   isEconomicDispatcher:false,isMetaDispatcher:false,isCaptureCertified:false});
 }
