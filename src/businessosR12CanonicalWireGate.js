@@ -86,7 +86,12 @@ function inspectWire({topic,key,headers,value}={}){
     !meta.idempotencyKey)
   return {state:'CANONICAL_METADATA_MISMATCH_HOLD'};
  if(type!=='PaymentCaptured')
-  return {state:'NON_CAPTURE_EVENT_HOLD',eventType:type};
+  return Object.freeze({state:'NON_CAPTURE_EVENT_HOLD',eventType:type,
+   eventId:meta.eventId,tenantId:meta.tenantId.id,
+   paymentIntentId:event.paymentId,
+   paymentAttemptId:meta.source.aggregateId,
+   payloadDigest:crypto.createHash('sha256').update(value).digest('hex'),
+   isPaid:false,canSendReceipt:false});
  // Canonical PaymentCaptured event id is deterministic by PaymentAttempt.
  if(meta.eventId!=='payment-engine:'+meta.source.aggregateId+':PaymentCaptured')
   return {state:'CANONICAL_METADATA_MISMATCH_HOLD'};
