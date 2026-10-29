@@ -30,26 +30,43 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
   try{
    c=await pool.connect();
    await c.query('BEGIN');active=true;
+   // The event id is a business-fact identity, NOT a Kafka delivery identity.
+   // Kafka may legitimately redeliver the SAME fact at a DIFFERENT offset.
+   // Serialize same event_id across partitions to reject collisions.
+   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+    [candidate.eventId]);
    const values=[candidate.eventId,candidate.payloadDigest,
     coordinate.topic,coordinate.partition,coordinate.offset,eventType,
     candidate.tenantId,candidate.paymentIntentId,candidate.paymentAttemptId,disposition];
+   const prior=await c.query(
+    'SELECT * FROM waba_channel.canonical_kafka_ingress WHERE event_id=$1 '+
+    'LIMIT 1 FOR UPDATE',[candidate.eventId]);
+   if(prior.rowCount===1){
+    const v=prior.rows[0];
+    if(v.payload_sha256!==candidate.payloadDigest||
+       v.event_type!==eventType||v.tenant_id!==candidate.tenantId||
+       v.payment_intent_id!==candidate.paymentIntentId||
+       v.payment_attempt_id!==candidate.paymentAttemptId||
+       v.disposition!==disposition){
+     await c.query('ROLLBACK');active=false;
+     return {state:'EVENT_ID_OR_OFFSET_COLLISION_HOLD'};
+    }
+   }
    const saved=await c.query(
     'INSERT INTO waba_channel.canonical_kafka_ingress '+
     '(event_id,payload_sha256,topic,partition_id,record_offset,event_type,'+
     'tenant_id,payment_intent_id,payment_attempt_id,disposition) '+
     'VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) '+
-    'ON CONFLICT DO NOTHING RETURNING event_id',values);
+    'ON CONFLICT (topic,partition_id,record_offset) DO NOTHING RETURNING event_id',
+    values);
    if(saved.rowCount!==1){
-    const existing=await c.query(
+    const previous=await c.query(
      'SELECT * FROM waba_channel.canonical_kafka_ingress '+
-     'WHERE event_id=$1 OR (topic=$2 AND partition_id=$3 AND record_offset=$4) '+
-     'FOR UPDATE',
-     [candidate.eventId,coordinate.topic,coordinate.partition,coordinate.offset]);
-    const v=existing.rows[0];
-    if(existing.rowCount!==1||!v||
-       v.event_id!==candidate.eventId||v.payload_sha256!==candidate.payloadDigest||
-       v.topic!==coordinate.topic||v.partition_id!==coordinate.partition||
-       String(v.record_offset)!==coordinate.offset||v.event_type!==eventType||
+     'WHERE topic=$1 AND partition_id=$2 AND record_offset=$3 FOR UPDATE',
+     [coordinate.topic,coordinate.partition,coordinate.offset]);
+    const v=previous.rows[0];
+    if(previous.rowCount!==1||!v||v.event_id!==candidate.eventId||
+       v.payload_sha256!==candidate.payloadDigest||v.event_type!==eventType||
        v.tenant_id!==candidate.tenantId||
        v.payment_intent_id!==candidate.paymentIntentId||
        v.payment_attempt_id!==candidate.paymentAttemptId||
