@@ -23,6 +23,7 @@ const SAFE_STATES=new Set([
  'TEST_FACTORY_REFUSED_NO_NETWORK','BROKER_CONNECT_OR_METADATA_HOLD',
  'TOPIC_NOT_FOUND_HOLD','ACL_INSPECTION_UNAVAILABLE_HOLD',
  'GROUP_ACL_INSPECTION_UNAVAILABLE_HOLD','ACL_POLICY_EMPTY_HOLD',
+ 'ACL_RESOURCE_SCOPE_NOT_PROVEN_HOLD',
  'BROKER_METADATA_OBSERVED_PENDING_INDEPENDENT_AUDIT'
 ]);
 function response(state,extra={}){
@@ -53,7 +54,7 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
      config?.skipTlsVerification===true||
      config?.sasl?.mechanism&&config.sasl.mechanism!=='scram-sha-512')
    return response('CONFIG_REJECTED_NO_NETWORK');
-  let admin,connected=false;
+  let admin;
   try{
    // Lazy import: no Kafka package or network is needed in dark mode.
    const kafkaLib=kafkaFactory?null:require('kafkajs');
@@ -69,7 +70,6 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
    const kafka=new Kafka(settings);
    admin=kafka.admin();
    await admin.connect();
-   connected=true;
    const md=await admin.fetchTopicMetadata({topics:[TOPIC]});
    const topic=(md?.topics||[]).find(x=>x.name===TOPIC);
    if(!topic||!Array.isArray(topic.partitions)||!topic.partitions.length)
@@ -120,6 +120,20 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
     return response('ACL_POLICY_EMPTY_HOLD',{
      topicMetadataObserved:true,partitionCount:topic.partitions.length
     });
+   // A non-empty ACL response can contain entries for another resource,
+   // a wildcard, or just a group unrelated to this authenticated caller.
+   // MATCH may return broad policies; demand exact resource observations
+   // before we even record the (still untrusted) policy as observed.
+   function exactScopedResource(results,type,name){
+    return results.resources.some(r=>r&&r.resourceType===type&&
+     r.resourceName===name&&Array.isArray(r.acls)&&r.acls.length>0);
+   }
+   if(!exactScopedResource(topicAcls,C.AclResourceTypes.TOPIC,TOPIC)||
+      !exactScopedResource(groupAcls,C.AclResourceTypes.GROUP,config.groupId))
+    return response('ACL_RESOURCE_SCOPE_NOT_PROVEN_HOLD',{
+     topicMetadataObserved:true,partitionCount:topic.partitions.length
+    });
+   // This still cannot attest actual allow/deny or authentic principal.
    // Never export ACL principal, host, credential, group, or raw policy.
    return response('BROKER_METADATA_OBSERVED_PENDING_INDEPENDENT_AUDIT',{
     topicMetadataObserved:true,partitionCount:topic.partitions.length,
@@ -128,7 +142,9 @@ function createR14SecuredKafkaReadOnlyProbe({enabled=false,config,kafkaFactory}=
   }catch(_err){
    return response('BROKER_CONNECT_OR_METADATA_HOLD');
   }finally{
-   if(connected&&admin)try{await admin.disconnect();}catch(_ignored){}
+   // A failed connect may have partially allocated KafkaJS resources.
+   // Disconnect even when connect() rejects; never mask original HOLD.
+   if(admin)try{await admin.disconnect();}catch(_ignored){}
   }
  }
  return Object.freeze({inspect,isEnabled:enabled===true,

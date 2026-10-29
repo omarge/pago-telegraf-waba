@@ -9,14 +9,14 @@ const cfg=()=>({
  password:'fake-test-secret-not-a-live-credential-1234',
  tlsCaPem:['-----BEGIN CERTIFICATE-----\nTEST-ONLY\n-----END CERTIFICATE-----']
 });
-function fake(log,{badAcl=false,missingTopic=false,groupAclError=false,emptyGroup=false}={}){
+function fake(log,{badAcl=false,missingTopic=false,groupAclError=false,emptyGroup=false,wrongTopicScope=false,wrongGroupScope=false,connectFail=false}={}){
  return function Kafka(config){
   log.settings=config;
   return {consumer(){throw Error('CONSUMER_FORBIDDEN');},
    producer(){throw Error('PRODUCER_FORBIDDEN');},
    admin(){log.adminCreated++;
     return {
-     async connect(){log.connected++;},
+     async connect(){log.connected++;if(connectFail)throw Error('PRIVATE-CONNECTION-CREDENTIAL-NEVER-PRINT');},
      async fetchTopicMetadata({topics}){
       assert.deepEqual(topics,['businessos.payment.events.v1']);
       log.metadata++;
@@ -27,7 +27,9 @@ function fake(log,{badAcl=false,missingTopic=false,groupAclError=false,emptyGrou
       if(badAcl||(groupAclError&&args.resourceType===3))
        throw Error('BROKER_NO_AUTHORIZATION_PRIVATE_DETAILS');
       return {resources:emptyGroup&&args.resourceType===3?[]:[
-       {resourceName:args.resourceName,resourceType:args.resourceType,acls:[{}]}
+       {resourceName:(args.resourceType===2&&wrongTopicScope)||
+        (args.resourceType===3&&wrongGroupScope)?'foreign-resource':args.resourceName,
+        resourceType:args.resourceType,acls:[{}]}
       ]};
      },
      async disconnect(){log.disconnected++;}
@@ -125,4 +127,37 @@ test('R15 malformed custom CA must stop before any network connection',async()=>
  assert.equal(out.state,'CONFIG_REJECTED_NO_NETWORK');
  assert.equal(l.adminCreated,0);
  assert.equal(out.isBrokerCertified,false);
+});
+
+test('R16 nonempty ACL for a foreign topic is not accepted as policy evidence',async()=>{
+ const log=counts();
+ const observed=await createR14SecuredKafkaReadOnlyProbe({
+  enabled:true,config:cfg(),kafkaFactory:fake(log,{wrongTopicScope:true})
+ }).inspect();
+ assert.equal(observed.state,'ACL_RESOURCE_SCOPE_NOT_PROVEN_HOLD');
+ assert.equal(observed.isAclCertified,false);
+ assert.equal(observed.productionGo,false);
+ assert.equal(log.disconnected,1);
+});
+test('R16 nonempty ACL for another group never attests our consumer group',async()=>{
+ const log=counts();
+ const observed=await createR14SecuredKafkaReadOnlyProbe({
+  enabled:true,config:cfg(),kafkaFactory:fake(log,{wrongGroupScope:true})
+ }).inspect();
+ assert.equal(observed.state,'ACL_RESOURCE_SCOPE_NOT_PROVEN_HOLD');
+ assert.equal(log.acls,2);
+ assert.equal(observed.mayConsumeMessages,false);
+ assert.equal(log.disconnected,1);
+});
+test('R16 failed Kafka admin connect disconnects partially allocated resources',async()=>{
+ const log=counts();
+ const observed=await createR14SecuredKafkaReadOnlyProbe({
+  enabled:true,config:cfg(),kafkaFactory:fake(log,{connectFail:true})
+ }).inspect();
+ assert.equal(observed.state,'BROKER_CONNECT_OR_METADATA_HOLD');
+ assert.equal(log.connected,1);
+ assert.equal(log.disconnected,1);
+ assert.equal(log.metadata,0);
+ assert.equal(observed.productionGo,false);
+ assert.equal(JSON.stringify(observed).includes('PRIVATE-CONNECTION-CREDENTIAL'),false);
 });
