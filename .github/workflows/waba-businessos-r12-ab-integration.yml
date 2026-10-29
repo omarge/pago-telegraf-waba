@@ -1,0 +1,65 @@
+name: WABA R12 A+B Integrated Rebalance and HOLD PG18
+on:
+  push:
+    branches:
+      - feature/waba-r12-kafka-ab-integration-20261028
+  pull_request:
+    paths:
+      - 'src/businessosR12RebalanceFencedConsumer.js'
+      - 'src/businessosR12KafkaHoldJournal.js'
+      - 'tests/businessos-r12-kafka-ab-integration.test.js'
+      - 'db/waba-r12-kafka-holds.sql'
+      - '.github/workflows/waba-businessos-r12-ab-integration.yml'
+permissions:
+  contents: read
+jobs:
+  full-postgres18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_ab
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_ab_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_ab -d waba_ab_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_ab:offline_test_only@127.0.0.1:5432/waba_ab_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test entire WABA suite, PostgreSQL crash/replay and rebalances
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          test "$(git hash-object contracts/businessos/integration/v1/payment.proto)" = "e450bba8a9a11b3a14bc741797fb23d6b163e066"
+          test "$(git hash-object contracts/businessos/integration/v1/common.proto)" = "ceaf14cd4a1b8ea9d6e86982f2c0420289abc823"
+          node --check src/businessosR12RebalanceFencedConsumer.js
+          node --check src/businessosR12KafkaHoldJournal.js
+          node --test tests/*.test.js
+  offline-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enforce no runtime mount, no financial dispatcher, all source syntax
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/businessosR12KafkaCommitProcessor.js
+          node --check src/businessosR12RebalanceFencedConsumer.js
+          node --check src/businessosR12KafkaHoldJournal.js
+          node --test tests/businessos-r12-kafka-ab-integration.test.js
