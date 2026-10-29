@@ -163,3 +163,22 @@ pgTest('R12-G repeated held deliveries remain HOLD without provider finality aut
  assert.equal(r.isPaid,false);
  assert.notEqual(r.state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
 });
+
+pgTest('R17-A capture on another attempt of same tenant/intent is a competing economic fact HOLD',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ await event(f,'PaymentCaptured',{attempt:'r17-competing-'+n,payload:digest('b')});
+ const r=await assess(f);
+ assert.equal(r.state,'COMPETING_CAPTURE_ATTEMPTS_HOLD');
+ assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
+});
+pgTest('R17-A same exact PaymentCaptured redelivered at different offset is not a competing capture',async()=>{
+ const f=await setup();await capture(f);
+ await event(f,'PaymentCaptured',{
+  attempt:f.attempt,payload:digest('a'),
+  eventId:'payment-engine:'+f.attempt+':PaymentCaptured'});
+ const r=await assess(f);
+ assert.equal(r.state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ assert.equal(r.observedEvents,2);
+ assert.equal(r.isPaid,false);
+});
