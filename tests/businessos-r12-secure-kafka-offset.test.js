@@ -36,7 +36,10 @@ function record(intent,attempt,{type='PaymentCaptured',date='2026-10-28T21:00:00
   orderingKey:intent,occurredAt:date};
  const message={meta,paymentId:intent,amount:{currency:{code:'MXN'},amountDecimal:amount}};
  if(type==='PaymentAuthorized')message.status='PAYMENT_STATUS_AUTHORIZED';
- const value=Buffer.from(t.encode(t.create(message)).finish());
+ if(type==='PaymentExecutionUnknown'){
+  message.paymentAttemptId=attempt;message.status='OUTCOME_STATUS_UNKNOWN';
+ }
+ const value=Buffer.from(t.encode(t.fromObject(message)).finish());
  const headers={
   'content-type':Buffer.from('application/x-protobuf'),
   'businessos-event-type':Buffer.from(type),
