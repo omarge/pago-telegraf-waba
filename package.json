@@ -10,7 +10,8 @@
     "express": "^4.21.0",
     "dotenv": "^16.4.5",
     "pg": "^8.13.0",
-    "protobufjs": "^7.5.4"
+    "protobufjs": "^7.5.4",
+    "kafkajs": "^2.2.4"
   },
   "devDependencies": {}
 }

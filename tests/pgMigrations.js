@@ -12,7 +12,7 @@ async function applyTestChannelMigrations(pool,files){
   await c.query('SELECT pg_advisory_lock(20261028, 6)');
   held=true;
   for(const file of files){
-   if(!/^waba-r(?:[456789]|10|11)-channel\.sql$|^waba-r12-canonical-channel\.sql$/.test(file))
+   if(!/^waba-r(?:[456789]|10|11)-channel\.sql$|^waba-r12-(?:canonical-channel|kafka-ingress)\.sql$/.test(file))
     throw Error('R6_TEST_MIGRATION_FILE');
    await c.query(fs.readFileSync(path.resolve(__dirname,'../db',file),'utf8'));
   }
