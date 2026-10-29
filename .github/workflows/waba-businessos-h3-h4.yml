@@ -1,0 +1,53 @@
+name: WABA BusinessOS H3 H4 Authenticated Durable Ingress Offline
+on:
+  push:
+    branches:
+      - feature/waba-businessos-r11-h3-h4-durable-ingress-auth-20261028
+  pull_request:
+    paths:
+      - 'src/index.js'
+      - 'src/accountRoutes.js'
+      - 'src/businessosR11AuthenticatedRoutes.js'
+      - 'src/businessosDurableIngressBootstrap.js'
+      - 'tests/businessos-r11-authenticated-routes.test.js'
+      - 'tests/businessos-r11-durable-bootstrap.test.js'
+      - '.github/workflows/waba-businessos-h3-h4.yml'
+      - 'package.json'
+permissions:
+  contents: read
+jobs:
+  h3-h4-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: waba_h34
+          POSTGRES_PASSWORD: offline_test_only
+          POSTGRES_DB: waba_h34_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waba_h34 -d waba_h34_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      R4_POSTGRES_TEST_URL: postgresql://waba_h34:offline_test_only@127.0.0.1:5432/waba_h34_test
+      WABA_TOKEN: ''
+      OPENPAY_PRIVATE_KEY: ''
+      WABA_SAVED_CARD_PAY_SANDBOX: '0'
+      WABA_CARD_ENROLL_SANDBOX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Offline H3 H4 and full WABA PostgreSQL regression
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --check src/index.js
+          node --check src/accountRoutes.js
+          node --check src/businessosR11AuthenticatedRoutes.js
+          node --check src/businessosDurableIngressBootstrap.js
+          node --test tests/*.test.js

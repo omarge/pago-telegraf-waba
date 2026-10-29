@@ -3,6 +3,7 @@ const express = require('express');
 const {verifySignature}=require('./f06DeliveryEvidence');
 const { handleWebhook } = require('./webhook');
 const { startFormServer } = require('./formServer');
+const {createDurableIngress}=require('./businessosDurableIngressBootstrap');
 
 const PORT = process.env.PORT || 8766;
 const VERIFY_TOKEN = process.env.WABA_VERIFY_TOKEN || 'kashbit_verify';
@@ -79,15 +80,29 @@ function createWebhookApp({onWebhook=handleWebhook,verifyToken=VERIFY_TOKEN,
   return app;
 }
 
-function startWabaServer() {
-  const app = createWebhookApp();
-  app.listen(PORT, () => {
-    console.log(`WABA webhook listening on ${PORT}`);
+async function startWabaServer({env=process.env}={}) {
+  // Strict mode is opt-in and does not process messages yet. It persists them
+  // only; no worker or BusinessOS financial execution is started here.
+  const durable=await createDurableIngress({env});
+  const app=createWebhookApp({
+    durableInbox:durable?.inbox||null,
+    appSecret:env.WABA_APP_SECRET,
+    verifyToken:env.WABA_VERIFY_TOKEN||'kashbit_verify'
   });
-  const FORM_PORT = process.env.FORM_PORT || 8765;
-  startFormServer(FORM_PORT);
+  const port=env.PORT||PORT;
+  const listener=app.listen(port,()=>{
+    console.log(`WABA webhook listening on ${port}`);
+  });
+  const formPort=env.FORM_PORT||8765;
+  startFormServer(formPort);
+  return {listener,durable};
 }
 
-if (require.main === module) startWabaServer();
+if (require.main === module) {
+  startWabaServer().catch(()=>{
+    console.error('WABA durable ingress startup refused; no webhook listener opened');
+    process.exitCode=1;
+  });
+}
 
 module.exports = {createWebhookApp,startWabaServer};
