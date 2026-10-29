@@ -225,6 +225,48 @@ pgTest('R11 DECLINED is recorded but never leads to retries or PAID',async()=>{
  assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
  assert.equal(f.calls.transport,1);
 });
+pgTest('H1: a different vault method after Fraud cannot authorize Payment',async()=>{
+  const id=await setup('G');
+  const f=fixture({authorityResolver:async({request})=>({
+    ...authority(request),paymentMethodReference:'vault-substituted-r11'
+  })});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'TRUSTED_MAPPING_UNVERIFIED');
+  assert.equal(f.calls.transport,0);
+  assert.equal(await row(id),null);
+  assert.equal(await reserveRow(id),null);
+});
+pgTest('H1: changing provider account and merchant after Fraud must fail closed',async()=>{
+  const id=await setup('H');
+  for(const change of [{providerAccountId:'other-provider-account-r11'},
+   {merchantId:'other-merchant-r11'}, {clientIpAddress:'127.0.0.2'}]){
+    const f=fixture({authorityResolver:async({request})=>({...authority(request),...change})});
+    assert.equal((await f.flow.authorizeOnce(args(id))).state,'TRUSTED_MAPPING_UNVERIFIED');
+    assert.equal(f.calls.transport,0);
+    assert.equal(await row(id),null);
+  }
+});
+pgTest('H2: a DECLINED from a foreign intent and attempt stays UNKNOWN_HOLD',async()=>{
+  const id=await setup('J');
+  const f=fixture({send:async()=>({httpStatus:200,body:{
+    status:'DECLINED',tenantId:TENANT,
+    paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
+  }})});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+  assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+  assert.equal(f.calls.transport,1);
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+  assert.equal(f.calls.transport,1);
+});
+pgTest('H2: a pre-execution rejection carrying a foreign intent stays UNKNOWN',async()=>{
+  const id=await setup('K');
+  const f=fixture({send:async()=>({httpStatus:422,body:{
+    status:'PRE_EXECUTION_FAILED',
+    paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
+  }})});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+  assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+});
+
 pgTest('R11 crash/failure inside reservation transaction rolls back BOTH tables, zero POST',async()=>{
  const id=await setup('8'),f=fixture();
  await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id LIKE 'KPR-%8' THEN RAISE EXCEPTION 'forced rollback'; END IF; RETURN NEW; END; $$");
