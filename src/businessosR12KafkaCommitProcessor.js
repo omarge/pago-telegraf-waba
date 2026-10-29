@@ -42,12 +42,15 @@ function createR12KafkaCommitProcessor({enabled=false,pool,captureInbox}={}){
    // Event IDs are business facts; one fact may appear at many offsets.
    // LIMIT 1 can overlook a conflicting replay if another row matches.
    // The advisory transaction lock serializes writers for this event ID.
-   // Check EVERY persisted row before authorizing any new offset commit.
+   // Check every persisted row within a hard bound; excess replays HOLD
+   // rather than being accepted on a truncated evidence view.
    const prior=await c.query(
     'SELECT payload_sha256,event_type,tenant_id,payment_intent_id,'+
     'payment_attempt_id,disposition FROM waba_channel.canonical_kafka_ingress '+
-    'WHERE event_id=$1 FOR UPDATE',[candidate.eventId]);
-   if(prior.rows.some(v=>
+    'WHERE event_id=$1 LIMIT 4097 FOR UPDATE',[candidate.eventId]);
+   // Exceeding the audit bound itself is a hard HOLD. An unlimited number of
+   // legitimate redeliveries must not exhaust PostgreSQL/Node resources.
+   if(prior.rowCount>4096||prior.rows.some(v=>
        v.payload_sha256!==candidate.payloadDigest||
        v.event_type!==eventType||v.tenant_id!==candidate.tenantId||
        v.payment_intent_id!==candidate.paymentIntentId||
