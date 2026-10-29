@@ -38,7 +38,10 @@ function createPgRoutingGate({pool,encryptionKey}={}){
  if(!pool||typeof pool.connect!=='function'||
     !Buffer.isBuffer(encryptionKey)||encryptionKey.length!==32)
   throw Error('R7_ROUTING_CONFIG');
- async function stageNext({messageId=null}={}){
+ async function stageNext({messageId=null,sourceEnvelopeDigest=null}={}){
+  if(sourceEnvelopeDigest!==null&&
+     (typeof sourceEnvelopeDigest!=='string'||!/^[a-f0-9]{64}$/.test(sourceEnvelopeDigest)))
+   return {state:'INVALID'};
   if(messageId!==null&&(typeof messageId!=='string'||!ID.test(messageId)))
    return {state:'INVALID'};
   let c;
@@ -58,9 +61,10 @@ function createPgRoutingGate({pool,encryptionKey}={}){
     'WHERE d.phone_number_id=n.phone_number_id AND d.message_id=n.message_id '+
     'AND d.event_kind=n.event_kind) '+
     'AND ($1::text IS NULL OR n.message_id=$1) '+
+   'AND ($2::text IS NULL OR n.source_envelope_digest=$2) '+
     'ORDER BY n.normalized_at,n.phone_number_id,n.message_id,n.event_kind '+
     'FOR UPDATE OF n SKIP LOCKED LIMIT 1',
-    [messageId]);
+    [messageId,sourceEnvelopeDigest]);
    if(found.rowCount===0){
     await c.query('COMMIT');active=false;return {state:'EMPTY'};
    }
@@ -81,7 +85,8 @@ function createPgRoutingGate({pool,encryptionKey}={}){
     [item.phone_number_id,item.message_id,item.event_kind,item.event_digest,
      item.source_envelope_digest,code]);
    await c.query('COMMIT');active=false;
-   return result.rowCount===1?{state:'STAGED_NO_EFFECT',routeCode:code}:
+   return result.rowCount===1?{state:'STAGED_NO_EFFECT',routeCode:code,
+    phoneNumberId:item.phone_number_id,messageId:item.message_id,eventKind:item.event_kind}:
     {state:'DUPLICATE_NO_EFFECT'};
   }catch(_e){
    if(active)try{await c.query('ROLLBACK');}catch(_ignored){}
