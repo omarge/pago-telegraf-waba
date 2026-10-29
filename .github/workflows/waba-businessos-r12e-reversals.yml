@@ -3,11 +3,7 @@ on:
   push:
     branches:
       - feature/waba-r12e-financial-reversal-hold-20261028
-  pull_request:
-    paths:
-      - 'src/businessosR12EconomicReversalHoldProjection.js'
-      - 'tests/businessos-r12-economic-reversal-hold.test.js'
-      - '.github/workflows/waba-businessos-r12e-reversals.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
