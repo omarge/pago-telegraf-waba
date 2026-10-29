@@ -37,11 +37,15 @@ function createR12CanonicalCaptureInbox({enabled=false,pool,wireGate}={}){
     'SELECT h.request_id,h.tenant_id,h.payer_account_id,h.businessos_intent_id,'+
     'h.businessos_attempt_id,h.reserved_businessos_intent_id,'+
     'h.reserved_businessos_attempt_id,h.amount_cents,h.currency,h.outcome,'+
+    'h.idempotency_key AS handoff_idempotency,'+
+    'ar.idempotency_key AS reservation_idempotency,'+
+    'ar.payer_account_id AS reservation_payer,'+
     'r.state AS request_state,r.amount_cents AS request_amount_cents,'+
     'r.currency AS request_currency,r.payer_account_id AS request_payer '+
     'FROM waba_channel.payment_authorization_handoffs h '+
     'JOIN waba_channel.requests r ON r.request_id=h.request_id '+
-    'WHERE h.request_id=$1 FOR UPDATE OF h,r',
+    'JOIN waba_channel.authorization_reservations ar ON ar.request_id=h.request_id '+
+    'WHERE h.request_id=$1 FOR UPDATE OF h,r,ar'
     [requestId]);
    if(rows.rowCount!==1){await c.query('COMMIT');active=false;return {state:'NOT_ELIGIBLE_HOLD'};}
    const h=rows.rows[0];
@@ -55,6 +59,14 @@ function createR12CanonicalCaptureInbox({enabled=false,pool,wireGate}={}){
       Number(h.request_amount_cents)!==candidate.amountCents){
     await c.query('COMMIT');active=false;
     return {state:'IDENTITY_OR_AMOUNT_MISMATCH_HOLD'};
+   }
+   // A direct inbox invocation must also prove R4's original reservation.
+   // Lock it together with request/handoff so it cannot disappear or change
+   // between validation and candidate insertion.
+   if(h.reservation_payer!==accountId||
+      h.reservation_idempotency!==h.handoff_idempotency){
+    await c.query('COMMIT');active=false;
+    return {state:'AUTHORIZATION_RESERVATION_MISMATCH_HOLD'};
    }
    // This inbox is a separate entry point: recheck R20's original
    // pre-POST reservation under the handoff row lock, not just the later
