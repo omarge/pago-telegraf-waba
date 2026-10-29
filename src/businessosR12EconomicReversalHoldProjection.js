@@ -52,6 +52,20 @@ function createR12EconomicReversalHoldProjection({enabled=false,pool}={}){
     await c.query('COMMIT');active=false;
     return {state:'HANDOFF_NOT_VALID_HOLD',isPaid:false};
    }
+   // One payment intent cannot be the source of two separately authorized
+   // WABA requests. Kafka's ingress lookup already holds on ambiguity, but
+   // the read-side snapshot must independently recheck historical bindings.
+   const bindings=await c.query(
+    'SELECT request_id FROM waba_channel.payment_authorization_handoffs '+
+    'WHERE tenant_id=$1 AND businessos_intent_id=$2 '+
+    "AND outcome='AUTHORIZED_PENDING_CAPTURE' LIMIT 2",
+    [h.tenant_id,h.businessos_intent_id]);
+   if(bindings.rowCount!==1||bindings.rows[0].request_id!==requestId){
+    await c.query('COMMIT');active=false;
+    return Object.freeze({state:'AMBIGUOUS_PAYMENT_INTENT_BINDING_HOLD',
+     isPaid:false,isFinal:false,isReconciled:false,
+     isProviderVerified:false,canSendReceipt:false,canSendWhatsApp:false});
+   }
    // Tenant/intent scope intentionally includes ALL attempts. A refund or
    // UNKNOWN on any attempt must not be concealed by a matching capture row.
    const events=await c.query(
