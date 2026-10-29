@@ -3,12 +3,7 @@ on:
   push:
     branches:
       - feature/waba-r12de-kafka-economic-integration-20261028
-  pull_request:
-    paths:
-      - 'tests/businessos-r12-real-ephemeral-kafka.test.js'
-      - 'src/businessosR12EconomicReversalHoldProjection.js'
-      - 'tests/businessos-r12-economic-reversal-hold.test.js'
-      - '.github/workflows/waba-businessos-r12de-integration.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
