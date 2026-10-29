@@ -38,7 +38,7 @@ function wire(kind,metadata={},extra={}){
    'businessos-correlation-id':INTENT,'businessos-causation-id':ATTEMPT,
    'schema-artifact-id':'payment.proto'
   },
-  value:Buffer.from(type.encode(type.create(payload)).finish())
+  value:Buffer.from(type.encode(type.fromObject(payload)).finish())
  };
 }
 test('R12-C all real owner noncapture event IDs remain HOLD, not capture/PAID',()=>{
