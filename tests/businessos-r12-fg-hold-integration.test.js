@@ -32,8 +32,9 @@ pgTest('R12-FG real HOLD journal blocks financially clean capture candidate with
  await pool.query('INSERT INTO waba_channel.payment_authorization_handoffs '+
   '(request_id,payer_account_id,tenant_id,customer_id,fraud_assessment_id,'+
   'amount_cents,idempotency_key,authority_fingerprint,outcome,'+
-  'businessos_intent_id,businessos_attempt_id,finalized_at) '+
-  "VALUES($1,$2,$3,$4,$5,$6,$7,$8,'AUTHORIZED_PENDING_CAPTURE',$9,$10,clock_timestamp())",
+  'businessos_intent_id,businessos_attempt_id,reserved_businessos_intent_id,'+
+  'reserved_businessos_attempt_id,finalized_at) '+
+  "VALUES($1,$2,$3,$4,$5,$6,$7,$8,'AUTHORIZED_PENDING_CAPTURE',$9,$10,$9,$10,clock_timestamp())",
   [requestId,payer,tenant,'r12fg-customer',
    '11111111-2222-4333-8444-555555555555',1275,key,'d'.repeat(64),intent,attempt]);
  const eventId='payment-engine:'+attempt+':PaymentCaptured';

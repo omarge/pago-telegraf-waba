@@ -32,11 +32,13 @@ async function setup(outcome='AUTHORIZED_PENDING_CAPTURE'){
  await pool.query('INSERT INTO waba_channel.payment_authorization_handoffs '+
   '(request_id,payer_account_id,tenant_id,customer_id,fraud_assessment_id,'+
   'amount_cents,idempotency_key,authority_fingerprint,outcome,'+
-  'businessos_intent_id,businessos_attempt_id,finalized_at) '+
-  "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $9='UNKNOWN_HOLD' THEN NULL ELSE clock_timestamp() END)",
+  'businessos_intent_id,businessos_attempt_id,reserved_businessos_intent_id,'+
+  'reserved_businessos_attempt_id,finalized_at) '+
+  "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $9='UNKNOWN_HOLD' THEN NULL ELSE clock_timestamp() END)",
   [id,PAYER,TENANT,'r12e-customer','11111111-2222-4333-8444-555555555555',
    1275,key,digest('f'),outcome,outcome==='UNKNOWN_HOLD'?null:intent,
-   outcome==='UNKNOWN_HOLD'?null:attempt]);
+   outcome==='UNKNOWN_HOLD'?null:attempt,
+   outcome==='UNKNOWN_HOLD'?null:intent,outcome==='UNKNOWN_HOLD'?null:attempt]);
  return {id,intent,attempt};
 }
 async function event(f,type,{attempt=f.attempt,payload=digest('a'),eventId=null}={}){
@@ -317,4 +319,16 @@ pgTest('R24-B deleted R4 reservation is missing authority, never a clean capture
  const r=await assess(f);
  assert.equal(r.state,'AUTHORIZATION_RESERVATION_MISMATCH_HOLD');
  assert.equal(r.isPaid,false);assert.equal(r.canSendWhatsApp,false);
+});
+
+pgTest('R28-B legacy both-NULL source economic reservation is explicit HOLD, never PAID',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ await pool.query('UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET reserved_businessos_intent_id=NULL,reserved_businessos_attempt_id=NULL '+
+  'WHERE request_id=$1',[f.id]);
+ const r=await assess(f);
+ assert.equal(r.state,'LEGACY_ECONOMIC_RESERVATION_HOLD');
+ for(const key of ['isPaid','isFinal','isReconciled','isProviderVerified','canSendReceipt','canSendWhatsApp'])
+  assert.equal(r[key],false,key);
 });
