@@ -13,7 +13,8 @@ if(process.env.R4_POSTGRES_TEST_URL){
   pool=new Pool({connectionString:process.env.R4_POSTGRES_TEST_URL,max:16});
   await applyTestChannelMigrations(pool,[
    'waba-r4-channel.sql','waba-r11-channel.sql',
-   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql']);
+   'waba-r12-canonical-channel.sql','waba-r12-kafka-ingress.sql',
+   'waba-r12-kafka-holds.sql']);
  });
  after(async()=>{await pool.end();});
 }
