@@ -6,6 +6,10 @@ on:
   pull_request:
     paths:
       - 'src/businessosR11FencedAuthorization.js'
+      - 'src/businessosMethodBinding.js'
+      - 'src/businessosCanonicalEvidenceGate.js'
+      - 'src/businessosCanonicalFraud.js'
+      - 'tests/businessos-r10-canonical-fraud.test.js'
       - 'db/waba-r11-channel.sql'
       - 'tests/businessos-r11-financial-handoff.test.js'
       - 'tests/pgMigrations.js'

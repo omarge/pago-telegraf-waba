@@ -5,22 +5,32 @@ const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createPostgresChannelStore}=require('../src/businessosPgChannelStore');
 const {createBusinessosAuthorizationAdapter}=require('../src/businessosAuthorizationAdapter');
 const {createR11FencedAuthorization}=require('../src/businessosR11FencedAuthorization');
+const {methodBindingDigest}=require('../src/businessosMethodBinding');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
-const REQUEST=n=>'KPR-'+'F'.repeat(30)+'0'+n;
+const REQUEST=n=>'KPR-'+'F'.repeat(30)+String(n).padStart(2,'0');
 const PAYER='waba-payer-r11',OTHER='waba-attacker-r11',FROM='5215555550002';
 const TENANT='tenant-businessos-r11',CUSTOMER='canonical-customer-r11';
 const FRAUD='11111111-2222-4333-8444-555555555555';
 const TOKEN='delegated-payment-token-r11-fake-123456789';
 const authority=(request)=>({
  tenantId:TENANT,customerId:CUSTOMER,accountId:PAYER,
+ merchantId:'merchant-businessos-r11',providerAccountId:'provider-account-r11',
  paymentMethodReferenceProvider:'OPENPAY',paymentMethodReference:'vault-opaque-r11',
  delegatedBearer:TOKEN,fraudAssessmentId:FRAUD,fraudDecision:'APPROVE',
  clientIpAddress:'127.0.0.1',
  fraudDeviceSessionReference:'device-r11'
 });
 function evidence(request){
+ const a=authority(request);
  return {state:'EVIDENCE_CANDIDATE_OFFLINE_ONLY',requestId:request.id,
-  tenantId:TENANT,customerId:CUSTOMER,assessmentId:FRAUD};
+  tenantId:TENANT,customerId:CUSTOMER,assessmentId:FRAUD,
+  paymentMethodBindingDigest:methodBindingDigest({
+   requestId:request.id,accountId:PAYER,tenantId:TENANT,customerId:CUSTOMER,
+   merchantId:a.merchantId,providerAccountId:a.providerAccountId,
+   amountCents:request.amount,provider:a.paymentMethodReferenceProvider,
+   opaqueReference:a.paymentMethodReference,assessmentId:FRAUD,
+   deviceFingerprint:'device-r11',deviceIp:'127.0.0.1'
+  })};
 }
 let pool,store;
 const {before,after}=require('node:test');
@@ -95,6 +105,8 @@ pgTest('R11 live-eligible fake authority creates both fence rows before single P
  assert.equal(handoff.tenant_id,TENANT);
  assert.equal(handoff.customer_id,CUSTOMER);
  assert.equal(handoff.fraud_assessment_id,FRAUD);
+ assert.equal(handoff.authority_fingerprint,
+  evidence({id,amount:1275}).paymentMethodBindingDigest);
  assert.equal(Number(handoff.amount_cents),1275);
  assert.equal(handoff.payer_account_id,PAYER);
  assert.equal(handoff.outcome,'AUTHORIZED_PENDING_CAPTURE');
@@ -225,6 +237,60 @@ pgTest('R11 DECLINED is recorded but never leads to retries or PAID',async()=>{
  assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
  assert.equal(f.calls.transport,1);
 });
+pgTest('H1: a different vault method after Fraud cannot authorize Payment',async()=>{
+  const id=await setup('AA');
+  const f=fixture({authorityResolver:async({request})=>({
+    ...authority(request),paymentMethodReference:'vault-substituted-r11'
+  })});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'TRUSTED_MAPPING_UNVERIFIED');
+  assert.equal(f.calls.transport,0);
+  assert.equal(await row(id),null);
+  assert.equal(await reserveRow(id),null);
+});
+pgTest('H1: changing provider account and merchant after Fraud must fail closed',async()=>{
+  const id=await setup('AB');
+  for(const change of [{providerAccountId:'other-provider-account-r11'},
+   {merchantId:'other-merchant-r11'}, {clientIpAddress:'127.0.0.2'}]){
+    const f=fixture({authorityResolver:async({request})=>({...authority(request),...change})});
+    assert.equal((await f.flow.authorizeOnce(args(id))).state,'TRUSTED_MAPPING_UNVERIFIED');
+    assert.equal(f.calls.transport,0);
+    assert.equal(await row(id),null);
+  }
+});
+pgTest('H2: a DECLINED from a foreign intent and attempt stays UNKNOWN_HOLD',async()=>{
+  const id=await setup('AC');
+  const f=fixture({send:async()=>({httpStatus:200,body:{
+    status:'DECLINED',tenantId:TENANT,
+    paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
+  }})});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+  assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+  assert.equal(f.calls.transport,1);
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+  assert.equal(f.calls.transport,1);
+});
+pgTest('H2: a pre-execution rejection carrying a foreign intent stays UNKNOWN',async()=>{
+  const id=await setup('AD');
+  const f=fixture({send:async()=>({httpStatus:422,body:{
+    status:'PRE_EXECUTION_FAILED',
+    paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
+  }})});
+  assert.equal((await f.flow.authorizeOnce(args(id))).state,'UNKNOWN_HOLD_NO_AUTO_RETRY');
+  assert.equal((await row(id)).outcome,'UNKNOWN_HOLD');
+});
+
+pgTest('H2: real pre-execution rejection without execution IDs is recorded',async()=>{
+ const id=await setup('AE');
+ const f=fixture({send:async()=>({httpStatus:422,body:{
+  status:'PRE_EXECUTION_FAILED'
+ }})});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'PRE_EXECUTION_FAILED');
+ assert.equal((await row(id)).outcome,'PRE_EXECUTION_FAILED');
+ assert.equal(f.calls.transport,1);
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,'HOLD_NO_AUTO_RETRY');
+ assert.equal(f.calls.transport,1);
+});
+
 pgTest('R11 crash/failure inside reservation transaction rolls back BOTH tables, zero POST',async()=>{
  const id=await setup('8'),f=fixture();
  await pool.query("CREATE OR REPLACE FUNCTION waba_channel.r11_fail_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id LIKE 'KPR-%8' THEN RAISE EXCEPTION 'forced rollback'; END IF; RETURN NEW; END; $$");

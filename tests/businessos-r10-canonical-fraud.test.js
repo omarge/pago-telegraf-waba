@@ -5,6 +5,7 @@ const assert=require('node:assert/strict');
 const {prepareCanonicalFraudAssessment,validateFraudAssessmentResponse,decimal}=
  require('../src/businessosCanonicalFraud');
 const {createR10CanonicalEvidenceGate}=require('../src/businessosCanonicalEvidenceGate');
+const {methodBindingDigest}=require('../src/businessosMethodBinding');
 const REQUEST='KPR-'+'A'.repeat(32);
 const accountId='waba-local-account-r10';
 const tenant='tenant-businessos-r10',customer='canonical-customer-r10';
@@ -233,7 +234,14 @@ test('R10 valid mocked trusted evidence only returns CANDIDATE, never Payment AU
  const r=await gate.prepare({request,accountId,device});
  assert.deepEqual(r,{
   state:'EVIDENCE_CANDIDATE_OFFLINE_ONLY',customerId:customer,
-  tenantId:tenant,assessmentId:assessment.assessmentId,requestId:REQUEST
+  tenantId:tenant,assessmentId:assessment.assessmentId,requestId:REQUEST,
+  paymentMethodBindingDigest:methodBindingDigest({
+   requestId:REQUEST,accountId,tenantId:tenant,customerId:customer,
+   merchantId:identity.merchantId,providerAccountId:identity.providerAccountId,
+   amountCents:request.amount,provider:method.provider,
+   opaqueReference:method.opaqueReference,assessmentId:assessment.assessmentId,
+   deviceFingerprint:device.fingerprint,deviceIp:device.ip
+  })
  });
  assert.equal(calls.identity,1);
  assert.equal(calls.vault,1);
@@ -247,6 +255,19 @@ test('R10 valid mocked trusted evidence only returns CANDIDATE, never Payment AU
  assert.equal(r.state==='PAID'||r.state==='AUTHORIZED',false);
  assert.equal('paymentMethodReference' in r,false);
 });
+test('R10 Fraud candidate is method-bound; another vault method cannot reuse it',async()=>{
+ const baseline=await makeGate().gate.prepare({request,accountId,device});
+ const switched=await makeGate({methodResult:{...method,
+  opaqueReference:'substituted-valid-reference-r10'}})
+  .gate.prepare({request,accountId,device});
+ assert.equal(baseline.state,'EVIDENCE_CANDIDATE_OFFLINE_ONLY');
+ assert.equal(switched.state,'EVIDENCE_CANDIDATE_OFFLINE_ONLY');
+ assert.match(baseline.paymentMethodBindingDigest,/^[0-9a-f]{64}$/);
+ assert.notEqual(baseline.paymentMethodBindingDigest,switched.paymentMethodBindingDigest);
+ assert.equal(JSON.stringify(baseline).includes(method.opaqueReference),false);
+ assert.equal('paymentMethodReference' in baseline,false);
+});
+
 test('R10 fraudulent caller-supplied APPROVE or vault reference is ignored',async()=>{
  const {gate,calls}=makeGate();
  const forged={...request,fraudDecision:'APPROVE',

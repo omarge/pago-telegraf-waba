@@ -65,7 +65,7 @@ function prepareCanonicalFraudAssessment({request,accountId,identity,method,devi
   accountId,tenantId:identity.tenantId,customerId:identity.customerId,
   paymentMethodReferenceProvider:method.provider,
   paymentMethodReference:method.opaqueReference,
-  providerAccountId:identity.providerAccountId,
+  providerAccountId:identity.providerAccountId,merchantId:identity.merchantId,
   requestId:request.id,amountCents:request.amount
  };
  return Object.freeze({
