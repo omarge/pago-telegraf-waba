@@ -7,7 +7,7 @@ const {createBusinessosAuthorizationAdapter}=require('../src/businessosAuthoriza
 const {createR11FencedAuthorization}=require('../src/businessosR11FencedAuthorization');
 const {methodBindingDigest}=require('../src/businessosMethodBinding');
 const pgTest=process.env.R4_POSTGRES_TEST_URL?test:test.skip;
-const REQUEST=n=>'KPR-'+'F'.repeat(30)+'0'+n;
+const REQUEST=n=>'KPR-'+'F'.repeat(30)+String(n).padStart(2,'0');
 const PAYER='waba-payer-r11',OTHER='waba-attacker-r11',FROM='5215555550002';
 const TENANT='tenant-businessos-r11',CUSTOMER='canonical-customer-r11';
 const FRAUD='11111111-2222-4333-8444-555555555555';
@@ -236,7 +236,7 @@ pgTest('R11 DECLINED is recorded but never leads to retries or PAID',async()=>{
  assert.equal(f.calls.transport,1);
 });
 pgTest('H1: a different vault method after Fraud cannot authorize Payment',async()=>{
-  const id=await setup('G');
+  const id=await setup('AA');
   const f=fixture({authorityResolver:async({request})=>({
     ...authority(request),paymentMethodReference:'vault-substituted-r11'
   })});
@@ -246,7 +246,7 @@ pgTest('H1: a different vault method after Fraud cannot authorize Payment',async
   assert.equal(await reserveRow(id),null);
 });
 pgTest('H1: changing provider account and merchant after Fraud must fail closed',async()=>{
-  const id=await setup('H');
+  const id=await setup('AB');
   for(const change of [{providerAccountId:'other-provider-account-r11'},
    {merchantId:'other-merchant-r11'}, {clientIpAddress:'127.0.0.2'}]){
     const f=fixture({authorityResolver:async({request})=>({...authority(request),...change})});
@@ -256,7 +256,7 @@ pgTest('H1: changing provider account and merchant after Fraud must fail closed'
   }
 });
 pgTest('H2: a DECLINED from a foreign intent and attempt stays UNKNOWN_HOLD',async()=>{
-  const id=await setup('J');
+  const id=await setup('AC');
   const f=fixture({send:async()=>({httpStatus:200,body:{
     status:'DECLINED',tenantId:TENANT,
     paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
@@ -268,7 +268,7 @@ pgTest('H2: a DECLINED from a foreign intent and attempt stays UNKNOWN_HOLD',asy
   assert.equal(f.calls.transport,1);
 });
 pgTest('H2: a pre-execution rejection carrying a foreign intent stays UNKNOWN',async()=>{
-  const id=await setup('K');
+  const id=await setup('AD');
   const f=fixture({send:async()=>({httpStatus:422,body:{
     status:'PRE_EXECUTION_FAILED',
     paymentIntentId:'foreign-intent-r11',paymentAttemptId:'foreign-attempt-r11'
