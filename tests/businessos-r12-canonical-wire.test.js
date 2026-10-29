@@ -9,18 +9,28 @@ const paymentId='waba-int-abc123',attempt='waba-att-abc123',tenant='tenant-waba-
 const eventId='payment-engine:'+attempt+':PaymentCaptured';
 const mk=(opts={})=>{
  const type=opts.type||'PaymentCaptured';
- const meta={eventId,eventType:type,eventVersion:1,schemaVersion:1,
+ const localEventId='payment-engine:'+attempt+':'+type+
+  (type==='PaymentExecutionResolved'?':NOT_EXECUTED':'');
+ const meta={eventId:localEventId,eventType:type,eventVersion:1,schemaVersion:1,
   producer:'payment-engine',tenantId:{id:tenant},
   source:{aggregateType:'Payment',aggregateId:attempt,version:0},
   idempotencyKey:attempt,correlationId:paymentId,causationId:attempt,
   orderingKey:paymentId,occurredAt:'2026-10-28T20:00:00Z'};
  const data={meta,paymentId,amount:{currency:{code:'MXN'},amountDecimal:'12.75'}};
  if(type==='PaymentAuthorized')data.status='PAYMENT_STATUS_AUTHORIZED';
+ if(type==='PaymentFailed')data.status='OUTCOME_STATUS_FAILED';
+ if(type==='PaymentExecutionUnknown'){
+  data.paymentAttemptId=attempt;data.status='OUTCOME_STATUS_UNKNOWN';
+ }
+ if(type==='PaymentExecutionResolved'){
+  data.paymentAttemptId=attempt;
+  data.resolution='PAYMENT_EXECUTION_RESOLVED_NOT_EXECUTED';
+ }
  const protobufType=root.lookupType('businessos.integration.v1.'+type);
- const wire=protobufType.encode(protobufType.create(data)).finish();
+ const wire=protobufType.encode(protobufType.fromObject(data)).finish();
  return {topic:TOPIC,key:Buffer.from(tenant+'|'+paymentId),value:Buffer.from(wire),
   headers:{'content-type':'application/x-protobuf','businessos-event-type':type,
-   'businessos-event-id':eventId,'businessos-tenant-id':tenant,
+   'businessos-event-id':localEventId,'businessos-tenant-id':tenant,
    'businessos-schema-version':'1','businessos-correlation-id':paymentId,
    'businessos-causation-id':attempt,'schema-artifact-id':'payment.proto'}};
 };
