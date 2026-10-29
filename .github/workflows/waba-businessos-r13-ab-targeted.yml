@@ -5,6 +5,8 @@ on:
       - 'src/businessosR13KafkaDeploymentPreflight.js'
       - 'src/businessosR13ReconciliationAuthorityContract.js'
       - 'src/businessosR13OfflineReadinessGate.js'
+      - 'src/businessosR14SecuredKafkaReadOnlyProbe.js'
+      - 'scripts/r14-kafka-readonly-probe.js'
       - 'tests/businessos-r13-*.test.js'
       - '.github/workflows/waba-businessos-r13-ab-targeted.yml'
 permissions:
@@ -26,4 +28,6 @@ jobs:
           node --check src/businessosR13KafkaAclEvidenceReview.js
           node --check src/businessosR13EconomicEvidenceCoverage.js
           node --check src/businessosR13EvidenceCompletenessGate.js
+          node --check src/businessosR14SecuredKafkaReadOnlyProbe.js
+          node --check scripts/r14-kafka-readonly-probe.js
           node --test tests/businessos-r13-*.test.js
