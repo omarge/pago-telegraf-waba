@@ -27,7 +27,7 @@ const mk=(opts={})=>{
   data.resolution='PAYMENT_EXECUTION_RESOLVED_NOT_EXECUTED';
  }
  const protobufType=root.lookupType('businessos.integration.v1.'+type);
- const wire=protobufType.encode(protobufType.create(data)).finish();
+ const wire=protobufType.encode(protobufType.fromObject(data)).finish();
  return {topic:TOPIC,key:Buffer.from(tenant+'|'+paymentId),value:Buffer.from(wire),
   headers:{'content-type':'application/x-protobuf','businessos-event-type':type,
    'businessos-event-id':localEventId,'businessos-tenant-id':tenant,
