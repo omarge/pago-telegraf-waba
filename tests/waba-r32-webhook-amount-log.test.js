@@ -26,6 +26,7 @@ test('R32-A valid cent amount creates exactly one invitation',async()=>{
 test('R32-B invitation URL never enters application log',async()=>{
  const f=fixture();await f.send('cobrar');await f.send('1000');
  const logs=f.logged.join(' ');
- assert.doesNotMatch(logs,/private-invite-bearer-token|example\\.invalid\\/pay\\/request/);
+ assert.equal(logs.includes('private-invite-bearer-token'),false);
+ assert.equal(logs.includes('example.invalid/pay/request'),false);
  assert.match(logs,/payment request link created/);
 });
