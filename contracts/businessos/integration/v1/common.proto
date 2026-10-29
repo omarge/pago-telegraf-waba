@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package businessos.integration.v1;
+
+option java_package = "businessos.integration.v1";
+option java_multiple_files = true;
+option java_outer_classname = "CommonProto";
+
+// ---------------------------------------------------------------------------
+// Canonical integration types. Transport-neutral. No engine endpoint, no JPA,
+// no DB table name appears in any field. Money is exact decimal string.
+// ---------------------------------------------------------------------------
+
+// ISO-4217 currency code, e.g. "USD", "EUR", "MXN". Uppercase, 3 letters.
+message Currency {
+  string code = 1; // ISO-4217 alpha-3
+}
+
+// Exact monetary amount. NEVER float/double on the wire.
+// amount_decimal is a plain base-10 string with optional leading minus and
+// optional fractional part using '.', NO exponent, NO locale, NO NaN/Inf.
+// Examples: "100.00", "-5", "0", "123456.7890"
+message Money {
+  Currency currency = 1;
+  string amount_decimal = 2; // canonical exact decimal string
+}
+
+// Decimal value for rates / percentages / ratios (non-money). Same exactness
+// rules as Money.amount_decimal. Examples: "0.035" (3.5%), "1.21".
+message DecimalValue {
+  string value = 1; // canonical exact decimal string
+}
+
+// Tenant isolation boundary. Every effectful message carries a tenant.
+message TenantId {
+  string id = 1; // canonical tenant string id
+}
+
+// Aggregate reference for event sourcing / ownership tracking.
+message AggregateRef {
+  string aggregate_type = 1; // e.g. "Payment", "Merchant", "Settlement"
+  string aggregate_id = 2;   // canonical aggregate id (string)
+  int64 version = 3;          // aggregate version; 0 if not versioned
+}
+
+// Metadata present on every canonical EVENT emitted by an engine.
+message EventMetadata {
+  string event_id = 1;                 // globally unique event id
+  TenantId tenant_id = 2;              // ownership boundary (fail-closed)
+  AggregateRef source = 3;             // producing aggregate
+  string idempotency_key = 4;          // FIRST+APPLY / replay detection
+  string correlation_id = 5;            // end-to-end flow id
+  string causation_id = 6;             // event/id that caused this one
+  string traceparent = 7;              // W3C trace context (optional)
+  string ordering_key = 8;             // per-aggregate ordering hint
+  string occurred_at = 9;              // RFC3339 UTC timestamp
+  string producer = 10;                // owning engine id (ownership law)
+  int32 schema_version = 11;           // contract schema version (v1 = 1)
+  string event_type = 12;              // canonical event type (e.g. "PaymentCaptured")
+  int32 event_version = 13;            // event schema sub-version within v1
+}
+
+// Metadata present on every canonical COMMAND accepted by an engine.
+message CommandMetadata {
+  string command_id = 1;               // globally unique command id
+  TenantId tenant_id = 2;              // ownership boundary (fail-closed)
+  AggregateRef target = 3;             // target aggregate
+  string idempotency_key = 4;          // required on effectful commands
+  string correlation_id = 5;
+  string causation_id = 6;
+  string traceparent = 7;
+  string issued_at = 8;                // RFC3339 UTC
+  string issuer = 9;                   // requesting engine / principal
+  int32 schema_version = 10;           // contract schema version (v1 = 1)
+  string command_type = 11;            // canonical command type (e.g. "PayoutRequested")
+  int32 command_version = 12;          // command schema sub-version within v1
+}
+
+// Canonical "we do not know yet" marker. Used where a value is legally allowed
+// to be UNKNOWN/INDETERMINATE_EXECUTION but MUST NOT be silently invented.
+enum OutcomeStatus {
+  OUTCOME_STATUS_UNSPECIFIED = 0;
+  OUTCOME_STATUS_OK = 1;              // known, success
+  OUTCOME_STATUS_FAILED = 2;          // known, failed
+  OUTCOME_STATUS_UNKNOWN = 3;         // unknown at decision time (allowed)
+  OUTCOME_STATUS_INDETERMINATE_EXECUTION = 4; // executed but result uncertain
+  OUTCOME_STATUS_PENDING = 5;         // deferred / async
+}
+
+// Envelope wrapper used when transporting a canonical message whose concrete
+// type is not statically known by the reader (e.g. generic log sink).
+message CanonicalEnvelope {
+  string message_type = 1;             // fully-qualified proto message name
+  bytes payload = 2;                   // serialized concrete message
+  EventMetadata event_meta = 3;
+  CommandMetadata command_meta = 4;
+}

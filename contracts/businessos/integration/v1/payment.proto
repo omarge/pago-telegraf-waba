@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package businessos.integration.v1;
+
+import "businessos/integration/v1/common.proto";
+
+option java_package = "businessos.integration.v1";
+option java_multiple_files = true;
+option java_outer_classname = "PaymentProto";
+
+// ---------------------------------------------------------------------------
+// PAYMENT engine ownership (INT-00-R2). Canonical payment lifecycle. Money is
+// exact. Effectful commands REQUIRE idempotency_key (fail-closed on missing).
+// Tenant mismatch => fail-closed. Same id + same payload = replay; same id +
+// diff payload = fail-closed.
+// ---------------------------------------------------------------------------
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_CREATED = 1;
+  PAYMENT_STATUS_AUTHORIZED = 2;
+  PAYMENT_STATUS_CAPTURED = 3;
+  PAYMENT_STATUS_SETTLED = 4;
+  PAYMENT_STATUS_REFUNDED = 5;
+  PAYMENT_STATUS_FAILED = 6;
+  PAYMENT_STATUS_CANCELLED = 7;
+  PAYMENT_STATUS_UNKNOWN = 8;           // representable
+}
+
+message Payment {
+  string payment_id = 1;
+  TenantId tenant_id = 2;
+  string merchant_id = 3;
+  Money amount = 4;
+  string currency = 5;                 // ISO-4217 (mirror of amount.currency)
+  PaymentStatus status = 6;
+  string method = 7;                    // CARD | BANK_TRANSFER | WALLET
+  string created_at = 8;               // RFC3339
+  string correlation_id = 9;
+}
+
+// --- Commands (effectful; idempotency_key REQUIRED) ---
+
+message AuthorizePayment {
+  CommandMetadata meta = 1;
+  string payment_id = 2;
+  string merchant_id = 3;
+  Money amount = 4;
+  string method = 5;
+}
+
+message CapturePayment {
+  CommandMetadata meta = 1;
+  string payment_id = 2;
+  Money amount = 3;                     // partial capture allowed
+}
+
+message RefundPayment {
+  CommandMetadata meta = 1;
+  string payment_id = 2;
+  Money amount = 3;
+  string reason = 4;
+}
+
+// --- Events ---
+
+message PaymentAuthorized {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  Money amount = 3;
+  string auth_code = 4;
+  PaymentStatus status = 5;
+}
+
+message PaymentCaptured {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  Money amount = 3;
+  // Backward-compatible optional extension (INT-29 schema-evolution certification):
+  // old producers omit it; new producers may set it. Protobuf proto3 tolerates unknown/extra
+  // fields, so existing readers ignore it and the field defaults to empty for absent writers.
+  string reconciliation_tag = 4;
+}
+
+message PaymentRefunded {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  Money amount = 3;
+  string refund_id = 4;
+}
+
+message PaymentFailed {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  string reason = 3;
+  OutcomeStatus status = 4;             // FAILED | UNKNOWN | INDETERMINATE
+}
+
+// ---------------------------------------------------------------------------
+// UNKNOWN execution contract. PaymentExecutionUnknown means the external effect
+// MAY have occurred but authoritative confirmation is absent. It MUST NOT be
+// interpreted as FAILED. PaymentExecutionResolved closes a prior UNKNOWN to a
+// conclusive terminal result (EXECUTED | NOT_EXECUTED). No blind provider
+// failover: a new economic execution identity is never minted on timeout.
+// ---------------------------------------------------------------------------
+
+enum PaymentExecutionResolution {
+  PAYMENT_EXECUTION_RESOLUTION_UNSPECIFIED = 0;
+  PAYMENT_EXECUTION_RESOLVED_EXECUTED = 1;     // effect conclusively occurred
+  PAYMENT_EXECUTION_RESOLVED_NOT_EXECUTED = 2; // conclusively did not occur
+}
+
+message PaymentExecutionUnknown {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  string payment_attempt_id = 3;
+  OutcomeStatus status = 4;             // UNKNOWN | INDETERMINATE_EXECUTION
+  string provider_reference = 5;        // optional, if any
+  string note = 6;
+}
+
+message PaymentExecutionResolved {
+  EventMetadata meta = 1;
+  string payment_id = 2;
+  string payment_attempt_id = 3;
+  string original_unknown_event_id = 4; // reference to the prior UNKNOWN event
+  PaymentExecutionResolution resolution = 5; // EXECUTED | NOT_EXECUTED (terminal)
+  string provider_evidence_reference = 6;
+  Money amount = 7;                     // present when EXECUTED
+}
