@@ -9,7 +9,7 @@ const cfg=()=>({
  password:'fake-test-secret-not-a-live-credential-1234',
  tlsCaPem:['-----BEGIN CERTIFICATE-----\nTEST-ONLY\n-----END CERTIFICATE-----']
 });
-function fake(log,{badAcl=false,missingTopic=false}={}){
+function fake(log,{badAcl=false,missingTopic=false,groupAclError=false,emptyGroup=false}={}){
  return function Kafka(config){
   log.settings=config;
   return {consumer(){throw Error('CONSUMER_FORBIDDEN');},
@@ -23,9 +23,12 @@ function fake(log,{badAcl=false,missingTopic=false}={}){
       return {topics:missingTopic?[]:[{name:topics[0],partitions:[{partitionId:0}]}]};
      },
      async describeAcls(args){
-      log.aclArgs=args;log.acls++;
-      if(badAcl)throw Error('BROKER_NO_AUTHORIZATION_PRIVATE_DETAILS');
-      return {resources:[]};
+      log.aclArgs.push(args);log.acls++;
+      if(badAcl||(groupAclError&&args.resourceType===3))
+       throw Error('BROKER_NO_AUTHORIZATION_PRIVATE_DETAILS');
+      return {resources:emptyGroup&&args.resourceType===3?[]:[
+       {resourceName:args.resourceName,resourceType:args.resourceType,acls:[{}]}
+      ]};
      },
      async disconnect(){log.disconnected++;}
     };
@@ -33,7 +36,7 @@ function fake(log,{badAcl=false,missingTopic=false}={}){
  };
 }
 function counts(){return {adminCreated:0,connected:0,metadata:0,acls:0,
- disconnected:0,settings:null};}
+ disconnected:0,settings:null,aclArgs:[]};}
 test('R14 probe disabled is network-dark with no dependencies',async()=>{
  const l=counts();
  const p=createR14SecuredKafkaReadOnlyProbe({enabled:false,
@@ -50,7 +53,12 @@ test('R14 genuine metadata/ACL-shaped test observation is never certification',a
  assert.equal(out.state,'BROKER_METADATA_OBSERVED_PENDING_INDEPENDENT_AUDIT');
  assert.equal(out.partitionCount,1);
  assert.equal(l.connected,1);assert.equal(l.metadata,1);
- assert.equal(l.acls,1);assert.equal(l.disconnected,1);
+ assert.equal(l.acls,2);assert.equal(l.disconnected,1);
+ assert.deepEqual(l.aclArgs.map(x=>x.resourceType),[2,3]);
+ assert.deepEqual(l.aclArgs.map(x=>x.resourceName),
+  ['businessos.payment.events.v1','waba-r14-security']);
+ assert.equal(out.topicAclDescriptionReturned,true);
+ assert.equal(out.groupAclDescriptionReturned,true);
  assert.equal(l.settings.ssl.rejectUnauthorized,true);
  assert.equal(l.settings.sasl.mechanism,'scram-sha-512');
  for(const key of ['isBrokerCertified','isAclCertified','isPaid',
@@ -86,4 +94,35 @@ test('R14 credentials are never copied into failed connection output',async()=>{
   enabled:true,config:cfg(),kafkaFactory:transport}).inspect();
  assert.equal(out.state,'BROKER_CONNECT_OR_METADATA_HOLD');
  assert.equal(JSON.stringify(out).includes('SECRET'),false);
+});
+
+test('R15 topic ACL exists but GROUP permission lookup fails, always HOLD',async()=>{
+ const l=counts();
+ const p=createR14SecuredKafkaReadOnlyProbe({enabled:true,
+  config:cfg(),kafkaFactory:fake(l,{groupAclError:true})});
+ const out=await p.inspect();
+ assert.equal(out.state,'GROUP_ACL_INSPECTION_UNAVAILABLE_HOLD');
+ assert.equal(l.acls,2);
+ assert.equal(l.disconnected,1);
+ assert.equal(out.isBrokerCertified,false);
+ assert.equal(out.mayConsumeMessages,false);
+ assert.equal(JSON.stringify(out).includes('waba-r14-security'),false);
+});
+test('R15 empty group ACL must not be mistaken for an authenticated policy',async()=>{
+ const l=counts();
+ const out=await createR14SecuredKafkaReadOnlyProbe({enabled:true,
+  config:cfg(),kafkaFactory:fake(l,{emptyGroup:true})}).inspect();
+ assert.equal(out.state,'ACL_POLICY_EMPTY_HOLD');
+ assert.equal(l.acls,2);
+ assert.equal(out.productionGo,false);
+ assert.equal(l.disconnected,1);
+});
+test('R15 malformed custom CA must stop before any network connection',async()=>{
+ const l=counts();
+ const out=await createR14SecuredKafkaReadOnlyProbe({enabled:true,
+  config:{...cfg(),tlsCaPem:['invalid-ca']},
+  kafkaFactory:fake(l)}).inspect();
+ assert.equal(out.state,'CONFIG_REJECTED_NO_NETWORK');
+ assert.equal(l.adminCreated,0);
+ assert.equal(out.isBrokerCertified,false);
 });
