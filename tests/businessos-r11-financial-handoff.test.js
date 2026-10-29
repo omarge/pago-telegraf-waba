@@ -1,5 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
+const crypto=require('node:crypto');
 const {Pool}=require('pg');
 const {applyTestChannelMigrations}=require('./pgMigrations');
 const {createPostgresChannelStore}=require('../src/businessosPgChannelStore');
@@ -340,4 +341,44 @@ pgTest('R11 initial database outage is sanitized; no evidence or adapter invoked
  });
  assert.deepEqual(await f.authorizeOnce(args(REQUEST('A'))),{state:'DB_UNAVAILABLE_NO_EFFECT'});
  assert.equal(count,0);
+});
+
+pgTest('R20-A collision on pre-reserved tenant economic intent prevents a second financial POST',async()=>{
+ const original=await setup('B0',1275),other=await setup('B1',1275);
+ const first=fixture();
+ assert.equal((await first.flow.authorizeOnce(args(original))).state,
+  'AUTHORIZED_PENDING_CAPTURE_NOT_PAID');
+ assert.equal(first.calls.transport,1);
+ const sha=crypto.createHash('sha256')
+  .update('waba-businessos-auth-v1\\n'+TENANT+'\\n'+other).digest('hex');
+ const futureIntent='waba-int-'+sha.slice(0,32);
+ const futureAttempt='waba-att-'+sha.slice(0,32);
+ // Simulate a bad historic reservation/import that acquired the NEXT
+ // economic identity. DB uniqueness, not a pre-check race, must deny POST.
+ await pool.query('UPDATE waba_channel.payment_authorization_handoffs '+
+  'SET reserved_businessos_intent_id=$1,reserved_businessos_attempt_id=$2 '+
+  'WHERE request_id=$3',[futureIntent,futureAttempt,original]);
+ const second=fixture();
+ assert.deepEqual(await second.flow.authorizeOnce(args(other)),
+  {state:'DB_UNAVAILABLE_NO_EFFECT'});
+ assert.equal(second.calls.transport,0);
+ assert.equal(await row(other),null);
+ assert.equal(await reserveRow(other),null);
+ const existing=await row(original);
+ assert.equal(existing.outcome,'AUTHORIZED_PENDING_CAPTURE');
+});
+pgTest('R20-A timeout retains pre-POST economic reservation and never retries',async()=>{
+ const id=await setup('B2'),f=fixture({send:async()=>{
+  throw Error('FAKE_PROVIDER_UNKNOWN_AFTER_POST');
+ }});
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,
+  'UNKNOWN_HOLD_NO_AUTO_RETRY');
+ const h=await row(id);
+ assert.ok(h.reserved_businessos_intent_id?.startsWith('waba-int-'));
+ assert.ok(h.reserved_businessos_attempt_id?.startsWith('waba-att-'));
+ assert.equal(h.businessos_intent_id,null);
+ assert.equal(h.businessos_attempt_id,null);
+ assert.equal((await f.flow.authorizeOnce(args(id))).state,
+  'HOLD_NO_AUTO_RETRY');
+ assert.equal(f.calls.transport,1);
 });
