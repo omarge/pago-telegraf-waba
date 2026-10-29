@@ -240,3 +240,26 @@ pgTest('R19-A duplicated authorized WABA request for one tenant+intent is HOLD d
  assert.equal(r.isPaid,false);assert.equal(r.canSendReceipt,false);
  assert.equal(r.isReconciled,false);
 });
+
+pgTest('R19-B global event-id reused on another intent or tenant HOLDs even with same local capture',async()=>{
+ const f=await setup();await capture(f);
+ assert.equal((await assess(f)).state,'CAPTURE_CANDIDATE_RECONCILIATION_PENDING');
+ const eventId='payment-engine:'+f.attempt+':PaymentCaptured';
+ const args=[eventId,digest('a'),TOPIC,TENANT,'foreign-r19-intent',f.attempt];
+ await pool.query(
+  'INSERT INTO waba_channel.canonical_kafka_ingress '+
+  '(event_id,payload_sha256,topic,partition_id,record_offset,event_type,'+
+  'tenant_id,payment_intent_id,payment_attempt_id,disposition) '+
+  "VALUES($1,$2,$3,89,1990000,'PaymentCaptured',$4,$5,$6,'CAPTURE_CANDIDATE_ONLY')",
+  args);
+ const x=await assess(f);
+ assert.equal(x.state,'CROSS_SCOPE_EVENT_ID_REUSE_HOLD');
+ assert.equal(x.isPaid,false);assert.equal(x.canSendReceipt,false);
+ // A different tenant is independently a global identity collision.
+ await pool.query('UPDATE waba_channel.canonical_kafka_ingress SET '+
+  'tenant_id=$1,payment_intent_id=$2 WHERE partition_id=89 AND record_offset=1990000',
+  ['foreign-r19-tenant',f.intent]);
+ const y=await assess(f);
+ assert.equal(y.state,'CROSS_SCOPE_EVENT_ID_REUSE_HOLD');
+ assert.equal(y.isReconciled,false);assert.equal(y.isProviderVerified,false);
+});
