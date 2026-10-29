@@ -118,13 +118,18 @@ function createR11FencedAuthorization({
     'ON CONFLICT (request_id) DO NOTHING RETURNING request_id',
     [requestId,accountId,preflight.body.idempotencyKey]);
    if(inserted.rowCount!==1)return {state:'HOLD_NO_AUTO_RETRY'};
+   // Reserve the deterministic tenant + PaymentIntent identity *before*
+   // invoking the external financial adapter. A uniqueness collision rolls
+   // back BOTH reservation rows; never issue a duplicate PSP-authority POST.
    await c.query('INSERT INTO waba_channel.payment_authorization_handoffs '+
     '(request_id,payer_account_id,tenant_id,customer_id,fraud_assessment_id,'+
-    'amount_cents,idempotency_key,authority_fingerprint) '+
-    'VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+    'amount_cents,idempotency_key,authority_fingerprint,'+
+    'reserved_businessos_intent_id,reserved_businessos_attempt_id) '+
+    'VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
     [requestId,accountId,authority.tenantId,authority.customerId,
      authority.fraudAssessmentId,record.amount,preflight.body.idempotencyKey,
-     authorityFingerprint]);
+     authorityFingerprint,preflight.body.paymentIntentId,
+     preflight.body.paymentAttemptId]);
    return {state:'RESERVED',requestId};
   });
   if(reserved.state!=='RESERVED')return reserved;
@@ -155,9 +160,12 @@ function createR11FencedAuthorization({
    const q=await c.query(
     'UPDATE waba_channel.payment_authorization_handoffs SET outcome=$2,'+
     'businessos_intent_id=$3,businessos_attempt_id=$4,finalized_at=clock_timestamp() '+
-    'WHERE request_id=$1 AND outcome=$5 RETURNING request_id',
+    'WHERE request_id=$1 AND outcome=$5 '+
+    'AND reserved_businessos_intent_id=$6 '+
+    'AND reserved_businessos_attempt_id=$7 RETURNING request_id',
     [requestId,terminal,
-     outcome.paymentIntentId||null,outcome.paymentAttemptId||null,'UNKNOWN_HOLD']);
+     outcome.paymentIntentId||null,outcome.paymentAttemptId||null,'UNKNOWN_HOLD',
+     preflight.body.paymentIntentId,preflight.body.paymentAttemptId]);
    return {state:q.rowCount===1?'RECORDED':'HOLD_NO_AUTO_RETRY'};
   });
   return updated.state==='RECORDED'?{state:terminal==='AUTHORIZED_PENDING_CAPTURE'?
